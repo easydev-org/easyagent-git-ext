@@ -1,0 +1,217 @@
+id: git
+version: 1.0
+lifecycle: [deleted]
+
+# git-ext serves git operations (clone / status / log / diff / branch / commit /
+# pull / push) against any git host — github.com, gitlab.com, gitea, or a
+# self-hosted instance. It is forge-agnostic: the transport is standard git
+# (smart HTTP over go-git, no system `git`), and a host's `kind` only selects the
+# HTTPS basic-auth username convention.
+#
+# Credentials are configured as a single `servers` knob (a JSON list of
+# {host, kind, token, user?}). It is a SECRET: the agent withholds its value
+# from clients (the UI shows only whether it is set), so a token never leaves
+# the server.
+tools:
+  - name: git-clone
+    description: >-
+      Clone a repository (or open it if already cloned) into the extension's
+      per-tenant cache, and return its current branch + HEAD. Subsequent
+      git-* calls on the same `remote` reuse the clone.
+    descriptions:
+      zh: >-
+        将仓库克隆（或已克隆则直接打开）到扩展的按租户缓存中，并返回当前分支与 HEAD。
+        对同一 `remote` 的后续 git-* 调用会复用该克隆。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: The git URL (https://host/org/repo.git, ssh://…, or git@host:org/repo.git).
+          descriptions:
+            zh: git 地址（https://host/org/repo.git、ssh://… 或 git@host:org/repo.git）。
+        branch:
+          type: string
+          description: Branch to check out (default the remote's default branch).
+          descriptions:
+            zh: 要检出的分支（默认为远端默认分支）。
+        depth:
+          type: integer
+          description: Shallow clone depth (default 1). 0 = full history.
+          descriptions:
+            zh: 浅克隆深度（默认 1）。0 表示完整历史。
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-status
+    description: Show the working-tree status (branch, HEAD, changed paths).
+    descriptions:
+      zh: 查看工作区状态（分支、HEAD、变更路径）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL of a cloned repo., descriptions: { zh: 已克隆仓库的 git 地址。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-log
+    description: List recent commits on the current branch.
+    descriptions:
+      zh: 列出当前分支的最近提交。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        limit: { type: integer, description: Max commits (default 20)., descriptions: { zh: 最大提交数（默认 20）。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-diff
+    description: >-
+      Show the file-level diff between two revisions (default HEAD..HEAD, i.e.
+      the working tree vs HEAD). Set patch=true to include the unified diff.
+    descriptions:
+      zh: >-
+        显示两个版本之间的文件级差异（默认 HEAD..HEAD，即工作区与 HEAD 的差异）。
+        patch=true 时包含 unified diff。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        from: { type: string, description: From revision (default HEAD)., descriptions: { zh: 起始版本（默认 HEAD）。 } }
+        to: { type: string, description: To revision (default HEAD)., descriptions: { zh: 目标版本（默认 HEAD）。 } }
+        patch: { type: boolean, description: Include the unified diff text., descriptions: { zh: 是否包含 unified diff 文本。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-branch
+    description: List branches (local by default; set remoteOnly=true for remote-tracking).
+    descriptions:
+      zh: 列出分支（默认本地；remoteOnly=true 列出远端跟踪分支）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        remoteOnly: { type: boolean, description: List remote-tracking branches., descriptions: { zh: 列出远端跟踪分支。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-checkout
+    description: Switch to a branch (create=true creates it).
+    descriptions:
+      zh: 切换到某个分支（create=true 则创建）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        branch: { type: string, description: Branch name., descriptions: { zh: 分支名。 } }
+        create: { type: boolean, description: Create the branch if absent., descriptions: { zh: 分支不存在时创建。 } }
+      required: [remote, branch]
+    required_config: [servers]
+
+  - name: git-add
+    description: Stage paths (omit `paths` to stage every change).
+    descriptions:
+      zh: 暂存路径（省略 `paths` 则暂存所有变更）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        paths: { type: array, items: { type: string }, description: Paths to stage (relative to the repo)., descriptions: { zh: 要暂存的路径（相对于仓库）。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-commit
+    description: Commit staged changes (all=true stages tracked changes first).
+    descriptions:
+      zh: 提交已暂存的变更（all=true 会先暂存已跟踪文件的变更）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        message: { type: string, description: Commit message., descriptions: { zh: 提交信息。 } }
+        all: { type: boolean, description: Stage tracked changes first., descriptions: { zh: 先暂存已跟踪文件的变更。 } }
+        author: { type: string, description: Author name., descriptions: { zh: 作者名。 } }
+        email: { type: string, description: Author email., descriptions: { zh: 作者邮箱。 } }
+      required: [remote, message]
+    required_config: [servers]
+
+  - name: git-pull
+    description: Fetch + merge the current branch from origin.
+    descriptions:
+      zh: 从 origin 拉取并合并当前分支。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-push
+    description: >-
+      Push the current branch (or `branch`) to origin. force=true uses a
+      force refspec (+refs/heads/…).
+    descriptions:
+      zh: >-
+        将当前分支（或 `branch`）推送到 origin。force=true 使用强制 refspec
+        （+refs/heads/…）。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        branch: { type: string, description: Branch to push (default current)., descriptions: { zh: 要推送的分支（默认当前）。 } }
+        force: { type: boolean, description: Force push., descriptions: { zh: 强制推送。 } }
+      required: [remote]
+    required_config: [servers]
+
+  - name: git-show
+    description: Print a file's content at a revision (default HEAD).
+    descriptions:
+      zh: 输出某版本（默认 HEAD）下某个文件的内容。
+    input_schema:
+      type: object
+      properties:
+        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
+        path: { type: string, description: File path in the repo., descriptions: { zh: 仓库内文件路径。 } }
+        rev: { type: string, description: Revision (default HEAD)., descriptions: { zh: 版本（默认 HEAD）。 } }
+      required: [remote, path]
+    required_config: [servers]
+
+config:
+  - name: servers
+    type: string
+    kind: secret
+    scope: global
+    description: >-
+      JSON list of git hosts this extension may authenticate against, each
+      {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}.
+      A server is selected by the remote URL's host; `kind` picks the HTTPS
+      basic-auth username convention (github → x-access-token, gitlab → oauth2,
+      gitea → the real account). `user` overrides it. Leave `token` empty for
+      anonymous (public) access. This value is a SECRET: it is never returned to
+      a client.
+    descriptions:
+      zh: >-
+        本扩展可认证的 git 主机列表（JSON），每项
+        {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}。
+        按 remote URL 的主机选择对应服务器；`kind` 决定 HTTPS basic-auth 用户名约定
+        （github → x-access-token，gitlab → oauth2，gitea → 真实账号），`user` 可覆盖。
+        `token` 留空则匿名（公开仓库）。该值为机密：永不返回给客户端。
+
+  - name: default-branch
+    type: string
+    scope: global
+    default: main
+    description: Branch used when a remote has no HEAD hint.
+    descriptions:
+      zh: 远端没有 HEAD 提示时使用的分支。
+
+  - name: require-auth
+    type: boolean
+    scope: global
+    default: false
+    description: >-
+      When true, a remote whose host has no configured server is rejected
+      instead of falling back to anonymous access.
+    descriptions:
+      zh: 为 true 时，主机未配置服务器的 remote 会被拒绝，而不会退回匿名访问。
