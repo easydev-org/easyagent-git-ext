@@ -1,14 +1,14 @@
 package tools
 
-import "strings"
+import (
+	"strings"
+)
 
-// argStr reads a string argument (” when absent/wrong type).
 func argStr(args map[string]any, key string) string {
 	v, _ := args[key].(string)
 	return strings.TrimSpace(v)
 }
 
-// argInt reads an int argument (def when absent/wrong type).
 func argInt(args map[string]any, key string, def int) int {
 	switch v := args[key].(type) {
 	case float64:
@@ -21,7 +21,6 @@ func argInt(args map[string]any, key string, def int) int {
 	return def
 }
 
-// argBool reads a bool argument (def when absent/wrong type).
 func argBool(args map[string]any, key string, def bool) bool {
 	if v, ok := args[key].(bool); ok {
 		return v
@@ -29,7 +28,6 @@ func argBool(args map[string]any, key string, def bool) bool {
 	return def
 }
 
-// argStrList reads a string[] argument ([] when absent/wrong type).
 func argStrList(args map[string]any, key string) []string {
 	raw, ok := args[key].([]any)
 	if !ok {
@@ -42,4 +40,9 @@ func argStrList(args map[string]any, key string) []string {
 		}
 	}
 	return out
+}
+
+// shellQuote single-quotes a value for the sandbox shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

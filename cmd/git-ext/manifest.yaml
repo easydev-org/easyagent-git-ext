@@ -1,217 +1,371 @@
 id: git
-version: 1.0
+version: 2.0
 lifecycle: [deleted]
 
-# git-ext serves git operations (clone / status / log / diff / branch / commit /
-# pull / push) against any git host — github.com, gitlab.com, gitea, or a
-# self-hosted instance. It is forge-agnostic: the transport is standard git
-# (smart HTTP over go-git, no system `git`), and a host's `kind` only selects the
-# HTTPS basic-auth username convention.
-#
-# Credentials are configured as a single `servers` knob (a JSON list of
-# {host, kind, token, user?}). It is a SECRET: the agent withholds its value
-# from clients (the UI shows only whether it is set), so a token never leaves
-# the server.
+# git-ext: git operations against a repository inside a remote easyworker
+# sandbox. Every tool runs `git` IN the sandbox (via the worker Execute RPC),
+# so it needs no system git of its own. Each tool takes a `sandbox` (which
+# worker) and a `path` (the repository directory in that sandbox); the path
+# must be a git repository or the call is rejected.
 tools:
   - name: git-clone
     description: >-
-      Clone a repository (or open it if already cloned) into the extension's
-      per-tenant cache, and return its current branch + HEAD. Subsequent
-      git-* calls on the same `remote` reuse the clone.
+      Clone a repository into `path` in the sandbox and return its current branch + HEAD.
     descriptions:
       zh: >-
-        将仓库克隆（或已克隆则直接打开）到扩展的按租户缓存中，并返回当前分支与 HEAD。
-        对同一 `remote` 的后续 git-* 调用会复用该克隆。
+        将仓库克隆到沙箱内的 `path` 并返回当前分支与 HEAD。
     input_schema:
       type: object
       properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
         remote:
           type: string
-          description: The git URL (https://host/org/repo.git, ssh://…, or git@host:org/repo.git).
+          description: "The git URL."
           descriptions:
-            zh: git 地址（https://host/org/repo.git、ssh://… 或 git@host:org/repo.git）。
+            zh: "git 地址。"
         branch:
           type: string
-          description: Branch to check out (default the remote's default branch).
+          description: "Branch to check out (default the remote default)."
           descriptions:
-            zh: 要检出的分支（默认为远端默认分支）。
+            zh: "要检出的分支（默认远端默认）。"
         depth:
           type: integer
-          description: Shallow clone depth (default 1). 0 = full history.
+          description: "Shallow depth (default 1; 0 = full)."
           descriptions:
-            zh: 浅克隆深度（默认 1）。0 表示完整历史。
-      required: [remote]
-    required_config: [servers]
-
+            zh: "浅克隆深度（默认 1；0 表示完整）。"
+      required: [sandbox, path, remote]
+    required_config: [sandboxes, servers]
   - name: git-status
-    description: Show the working-tree status (branch, HEAD, changed paths).
+    description: >-
+      Show the working-tree status of the repo at `path`.
     descriptions:
-      zh: 查看工作区状态（分支、HEAD、变更路径）。
+      zh: >-
+        显示 `path` 处仓库的工作区状态。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL of a cloned repo., descriptions: { zh: 已克隆仓库的 git 地址。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-log
-    description: List recent commits on the current branch.
+    description: >-
+      List recent commits of the repo at `path`.
     descriptions:
-      zh: 列出当前分支的最近提交。
+      zh: >-
+        列出 `path` 处仓库的最近提交。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        limit: { type: integer, description: Max commits (default 20)., descriptions: { zh: 最大提交数（默认 20）。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        limit:
+          type: integer
+          description: "Max commits (default 20)."
+          descriptions:
+            zh: "最大提交数（默认 20）。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-diff
     description: >-
-      Show the file-level diff between two revisions (default HEAD..HEAD, i.e.
-      the working tree vs HEAD). Set patch=true to include the unified diff.
+      Show the diff of the repo at `path`.
     descriptions:
       zh: >-
-        显示两个版本之间的文件级差异（默认 HEAD..HEAD，即工作区与 HEAD 的差异）。
-        patch=true 时包含 unified diff。
+        显示 `path` 处仓库的差异。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        from: { type: string, description: From revision (default HEAD)., descriptions: { zh: 起始版本（默认 HEAD）。 } }
-        to: { type: string, description: To revision (default HEAD)., descriptions: { zh: 目标版本（默认 HEAD）。 } }
-        patch: { type: boolean, description: Include the unified diff text., descriptions: { zh: 是否包含 unified diff 文本。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        staged:
+          type: boolean
+          description: "Diff the staged changes."
+          descriptions:
+            zh: "比较已暂存的变更。"
+        from:
+          type: string
+          description: "From revision."
+          descriptions:
+            zh: "起始版本。"
+        to:
+          type: string
+          description: "To revision."
+          descriptions:
+            zh: "目标版本。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-branch
-    description: List branches (local by default; set remoteOnly=true for remote-tracking).
+    description: >-
+      List branches of the repo at `path`.
     descriptions:
-      zh: 列出分支（默认本地；remoteOnly=true 列出远端跟踪分支）。
+      zh: >-
+        列出 `path` 处仓库的分支。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        remoteOnly: { type: boolean, description: List remote-tracking branches., descriptions: { zh: 列出远端跟踪分支。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        remoteOnly:
+          type: boolean
+          description: "List remote-tracking branches."
+          descriptions:
+            zh: "列出远端跟踪分支。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-checkout
-    description: Switch to a branch (create=true creates it).
+    description: >-
+      Switch to a branch in the repo at `path`.
     descriptions:
-      zh: 切换到某个分支（create=true 则创建）。
+      zh: >-
+        切换到 `path` 处仓库的某个分支。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        branch: { type: string, description: Branch name., descriptions: { zh: 分支名。 } }
-        create: { type: boolean, description: Create the branch if absent., descriptions: { zh: 分支不存在时创建。 } }
-      required: [remote, branch]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        branch:
+          type: string
+          description: "Branch name."
+          descriptions:
+            zh: "分支名。"
+        create:
+          type: boolean
+          description: "Create it if absent."
+          descriptions:
+            zh: "不存在时创建。"
+      required: [sandbox, path, branch]
+    required_config: [sandboxes, servers]
   - name: git-add
-    description: Stage paths (omit `paths` to stage every change).
+    description: >-
+      Stage paths in the repo at `path` (omit `paths` to stage all).
     descriptions:
-      zh: 暂存路径（省略 `paths` 则暂存所有变更）。
+      zh: >-
+        暂存 `path` 处仓库的路径（省略 `paths` 则暂存全部）。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        paths: { type: array, items: { type: string }, description: Paths to stage (relative to the repo)., descriptions: { zh: 要暂存的路径（相对于仓库）。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        paths:
+          type: array
+          description: "Paths to stage."
+          descriptions:
+            zh: "要暂存的路径。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-commit
-    description: Commit staged changes (all=true stages tracked changes first).
+    description: >-
+      Commit in the repo at `path`.
     descriptions:
-      zh: 提交已暂存的变更（all=true 会先暂存已跟踪文件的变更）。
+      zh: >-
+        在 `path` 处仓库提交。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        message: { type: string, description: Commit message., descriptions: { zh: 提交信息。 } }
-        all: { type: boolean, description: Stage tracked changes first., descriptions: { zh: 先暂存已跟踪文件的变更。 } }
-        author: { type: string, description: Author name., descriptions: { zh: 作者名。 } }
-        email: { type: string, description: Author email., descriptions: { zh: 作者邮箱。 } }
-      required: [remote, message]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        message:
+          type: string
+          description: "Commit message."
+          descriptions:
+            zh: "提交信息。"
+        all:
+          type: boolean
+          description: "Stage tracked changes first."
+          descriptions:
+            zh: "先暂存已跟踪文件的变更。"
+        author:
+          type: string
+          description: "Author (Name <email>)."
+          descriptions:
+            zh: "作者（Name <email>）。"
+      required: [sandbox, path, message]
+    required_config: [sandboxes, servers]
   - name: git-pull
-    description: Fetch + merge the current branch from origin.
+    description: >-
+      Fetch + fast-forward the repo at `path` from origin.
     descriptions:
-      zh: 从 origin 拉取并合并当前分支。
+      zh: >-
+        从 origin 拉取并快进 `path` 处仓库。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-push
     description: >-
-      Push the current branch (or `branch`) to origin. force=true uses a
-      force refspec (+refs/heads/…).
+      Push the repo at `path` to origin.
     descriptions:
       zh: >-
-        将当前分支（或 `branch`）推送到 origin。force=true 使用强制 refspec
-        （+refs/heads/…）。
+        将 `path` 处仓库推送到 origin。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        branch: { type: string, description: Branch to push (default current)., descriptions: { zh: 要推送的分支（默认当前）。 } }
-        force: { type: boolean, description: Force push., descriptions: { zh: 强制推送。 } }
-      required: [remote]
-    required_config: [servers]
-
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        branch:
+          type: string
+          description: "Branch to push (default current)."
+          descriptions:
+            zh: "要推送的分支（默认当前）。"
+        force:
+          type: boolean
+          description: "Force-with-lease push."
+          descriptions:
+            zh: "强制（force-with-lease）推送。"
+      required: [sandbox, path]
+    required_config: [sandboxes, servers]
   - name: git-show
-    description: Print a file's content at a revision (default HEAD).
+    description: >-
+      Print a file's content at a revision in the repo at `path`.
     descriptions:
-      zh: 输出某版本（默认 HEAD）下某个文件的内容。
+      zh: >-
+        输出 `path` 处仓库某版本下某文件的内容。
     input_schema:
       type: object
       properties:
-        remote: { type: string, description: The git URL., descriptions: { zh: git 地址。 } }
-        path: { type: string, description: File path in the repo., descriptions: { zh: 仓库内文件路径。 } }
-        rev: { type: string, description: Revision (default HEAD)., descriptions: { zh: 版本（默认 HEAD）。 } }
-      required: [remote, path]
-    required_config: [servers]
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (relative to the workspace root)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（相对于工作区根）。"
+        file:
+          type: string
+          description: "File path in the repo."
+          descriptions:
+            zh: "仓库内文件路径。"
+        rev:
+          type: string
+          description: "Revision (default HEAD)."
+          descriptions:
+            zh: "版本（默认 HEAD）。"
+      required: [sandbox, path, file]
+    required_config: [sandboxes, servers]
 
 config:
+  - name: sandboxes
+    type: string
+    kind: secret
+    scope: global
+    description: >-
+      JSON list of easyworker sandboxes git runs IN, each
+      {"name":"...","url":"http://worker:80","token":"..."}. Every git-* tool
+      takes a `sandbox` argument selecting one by name (the first is the
+      default). git itself runs in the sandbox. This value is a SECRET: it is
+      never returned to a client.
+    descriptions:
+      zh: >-
+        运行 git 的 easyworker 沙箱列表（JSON），每项
+        {"name":"...","url":"http://worker:80","token":"..."}。每个 git-* 工具通过
+        `sandbox` 参数按名选择（默认第一个）。git 本身在沙箱内运行。该值为机密：永不返回给客户端。
   - name: servers
     type: string
     kind: secret
     scope: global
     description: >-
-      JSON list of git hosts this extension may authenticate against, each
+      JSON list of git hosts to authenticate against, each
       {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}.
-      A server is selected by the remote URL's host; `kind` picks the HTTPS
-      basic-auth username convention (github → x-access-token, gitlab → oauth2,
-      gitea → the real account). `user` overrides it. Leave `token` empty for
-      anonymous (public) access. This value is a SECRET: it is never returned to
-      a client.
+      A server is selected by the remote URL host; `kind` picks the HTTPS
+      basic-auth username (github -> x-access-token, gitlab -> oauth2, gitea ->
+      the real account). SECRET: never returned to a client.
     descriptions:
       zh: >-
-        本扩展可认证的 git 主机列表（JSON），每项
+        需要认证的 git 主机列表（JSON），每项
         {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}。
-        按 remote URL 的主机选择对应服务器；`kind` 决定 HTTPS basic-auth 用户名约定
-        （github → x-access-token，gitlab → oauth2，gitea → 真实账号），`user` 可覆盖。
-        `token` 留空则匿名（公开仓库）。该值为机密：永不返回给客户端。
-
-  - name: default-branch
-    type: string
-    scope: global
-    default: main
-    description: Branch used when a remote has no HEAD hint.
-    descriptions:
-      zh: 远端没有 HEAD 提示时使用的分支。
-
+        按 remote URL 的主机选择；`kind` 决定 HTTPS basic-auth 用户名（github → x-access-token，
+        gitlab → oauth2，gitea → 真实账号）。机密：永不返回给客户端。
   - name: require-auth
     type: boolean
     scope: global
     default: false
-    description: >-
-      When true, a remote whose host has no configured server is rejected
-      instead of falling back to anonymous access.
+    description: "When true, a remote host with no configured server is rejected instead of anonymous."
     descriptions:
-      zh: 为 true 时，主机未配置服务器的 remote 会被拒绝，而不会退回匿名访问。
+      zh: "为 true 时，主机未配置服务器的 remote 会被拒绝，而不会匿名访问。"

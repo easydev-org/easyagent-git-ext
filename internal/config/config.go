@@ -25,7 +25,60 @@ const (
 	KnobGitProtocol   = "git-protocol"
 	KnobDefaultBranch = "default-branch"
 	KnobRequireAuth   = "require-auth"
+	// KnobSandboxes is the sandbox list (shared with sandbox-ext). Every git-*
+	// tool runs IN a sandbox, so this is required alongside `servers`.
+	KnobSandboxes = "sandboxes"
 )
+
+// Sandbox is one configured easyworker (the machine git runs on).
+type Sandbox struct {
+	Name  string `json:"name"`
+	URL   string `json:"url"`
+	Token string `json:"token"`
+}
+
+// ParseSandboxes parses the `sandboxes` JSON list, dropping invalid entries.
+func ParseSandboxes(raw string) []Sandbox {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var rows []Sandbox
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		return nil
+	}
+	out := make([]Sandbox, 0, len(rows))
+	for _, s := range rows {
+		s.Name = strings.TrimSpace(s.Name)
+		s.URL = strings.TrimSpace(s.URL)
+		s.Token = strings.TrimSpace(s.Token)
+		if s.Name == "" || s.URL == "" {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// SelectSandbox resolves a sandbox by name (” = the first configured).
+func SelectSandbox(list []Sandbox, wanted string) (Sandbox, error) {
+	if len(list) == 0 {
+		return Sandbox{}, fmt.Errorf("no sandboxes configured (set the `%s` config)", KnobSandboxes)
+	}
+	if wanted == "" {
+		return list[0], nil
+	}
+	for _, s := range list {
+		if s.Name == wanted {
+			return s, nil
+		}
+	}
+	names := make([]string, 0, len(list))
+	for _, s := range list {
+		names = append(names, s.Name)
+	}
+	return Sandbox{}, fmt.Errorf("unknown sandbox %q (known: %s)", wanted, strings.Join(names, ", "))
+}
 
 // ServerKind is the forge a host belongs to. It selects the HTTPS basic-auth
 // username convention (GitHub wants `x-access-token`, GitLab `oauth2`, Gitea a
@@ -53,6 +106,8 @@ type Server struct {
 
 // Config is the parsed, validated git-ext configuration.
 type Config struct {
+	// Sandboxes is the set of easyworker sandboxes git runs on (required).
+	Sandboxes     []Sandbox
 	Servers       []Server
 	GitProtocol   string // "https" (default) | "ssh"
 	DefaultBranch string // "main" (default)
@@ -68,6 +123,7 @@ func Parse(get func(name string) string) (Config, error) {
 		return Config{}, err
 	}
 	c := Config{
+		Sandboxes:     ParseSandboxes(get(KnobSandboxes)),
 		Servers:       servers,
 		GitProtocol:   orDefault(get(KnobGitProtocol), "https"),
 		DefaultBranch: orDefault(get(KnobDefaultBranch), "main"),
