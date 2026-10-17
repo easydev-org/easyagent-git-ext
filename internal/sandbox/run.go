@@ -38,7 +38,38 @@ func (r *Runner) Run(ctx context.Context, workdir, command string, timeout time.
 	if err != nil {
 		return "", &extension.TypedError{Code: easybus.ToolResultErrorCodeRetryable, Message: fmt.Sprintf("sandbox execute: %v", err)}
 	}
+	return r.wait(ctx, started.GetJobId(), timeout)
+}
+
+// RunSecret runs a command that reads a one-line SECRET from stdin (into the
+// shell variable GIT_TOKEN) and then performs the git operation.
+//
+// The secret NEVER appears in `command` (the worker persists Job.Command to
+// sqlite, and ListJobs would expose it) nor in the Execute env (which
+// /proc/<pid>/environ exposes). It rides the in-memory stdin pipe only, and the
+// command unsets it right after the git call. This is the "no token at rest"
+// contract: the secret is never written to disk, logs, or the job history.
+func (r *Runner) RunSecret(ctx context.Context, workdir, command, secret string, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	started, err := r.cl.Execute(ctx, &workerv1.ExecuteRequest{Command: command, Workdir: workdir, TimeoutMs: int32(timeout.Milliseconds())})
+	if err != nil {
+		return "", &extension.TypedError{Code: easybus.ToolResultErrorCodeRetryable, Message: fmt.Sprintf("sandbox execute: %v", err)}
+	}
 	jobID := started.GetJobId()
+	// Feed the secret on stdin. JobStdin blocks until the command reads it (the
+	// worker's stdin is an unbuffered os.Pipe), so do it off the wait loop; a
+	// command that never reads simply sees the pipe close when the job ends.
+	go func() {
+		_, _ = r.cl.JobStdin(ctx, &workerv1.JobStdinRequest{JobId: jobID, Data: []byte(secret + "\n"), Close: true})
+	}()
+	return r.wait(ctx, jobID, timeout)
+}
+
+// wait blocks until the job leaves "running" (or the budget expires) and
+// returns its output.
+func (r *Runner) wait(ctx context.Context, jobID string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		slice := time.Until(deadline)
@@ -63,6 +94,16 @@ func (r *Runner) Run(ctx context.Context, workdir, command string, timeout time.
 			return r.output(ctx, jobID), &extension.TypedError{Code: easybus.ToolResultErrorCodeRetryable, Message: "command timed out"}
 		}
 	}
+}
+
+// RemoteURL returns the URL of the "origin" remote of the repo at path (” when
+// absent). Used to resolve the credential for pull/push.
+func (r *Runner) RemoteURL(ctx context.Context, path string) string {
+	out, err := r.Git(ctx, path, 30*time.Second, "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // output reads the full job output.

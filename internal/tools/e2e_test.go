@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,12 +20,20 @@ import (
 type fakeWorker struct {
 	workerv1connect.UnimplementedWorkerServiceHandler
 	commands []string
+	stdin    map[string]string
 	failRepo bool
 }
 
 func (f *fakeWorker) Execute(_ context.Context, req *workerv1.ExecuteRequest) (*workerv1.ExecuteResponse, error) {
 	f.commands = append(f.commands, req.GetCommand())
-	return &workerv1.ExecuteResponse{JobId: "j1"}, nil
+	return &workerv1.ExecuteResponse{JobId: fmt.Sprintf("j%d", len(f.commands))}, nil
+}
+func (f *fakeWorker) JobStdin(_ context.Context, req *workerv1.JobStdinRequest) (*workerv1.JobStdinResponse, error) {
+	if f.stdin == nil {
+		f.stdin = map[string]string{}
+	}
+	f.stdin[req.GetJobId()] = string(req.GetData())
+	return &workerv1.JobStdinResponse{Ok: true}, nil
 }
 func (f *fakeWorker) JobWait(context.Context, *workerv1.JobWaitRequest) (*workerv1.JobWaitResponse, error) {
 	if f.failRepo {
@@ -130,5 +139,38 @@ func TestClonePassesRemoteAndPath(t *testing.T) {
 	joined := strings.Join(f.commands, " | ")
 	if !strings.Contains(joined, "clone") || !strings.Contains(joined, "github.com/x/y.git") {
 		t.Errorf("clone cmd = %v", f.commands)
+	}
+}
+
+// TestTokenNeverInCommand proves the SECRET contract: when a host is configured
+// with a token, the token is NOT in the Execute command (which the worker
+// persists + ListJobs exposes) and NOT in any env — it rides stdin only.
+func TestTokenNeverInCommand(t *testing.T) {
+	f, url := newServer(t)
+	r := reg(t, url)
+	if _, err := r["git-clone"](context.Background(), map[string]any{
+		"sandbox": "pod-a", "path": "/w/repo", "remote": "https://github.com/x/y.git", "depth": float64(1),
+	}, "s", "ten"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.commands {
+		if strings.Contains(c, "ghp_x") {
+			t.Fatalf("token LEAKED into command: %q", c)
+		}
+	}
+	// The token must have arrived via stdin.
+	found := false
+	for _, v := range f.stdin {
+		if strings.Contains(v, "ghp_x") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("token did not arrive via stdin")
+	}
+	// The command still reads GIT_TOKEN (the stdin-fed variable).
+	joined := strings.Join(f.commands, " | ")
+	if !strings.Contains(joined, "read -r GIT_TOKEN") {
+		t.Errorf("no stdin read in command: %v", f.commands)
 	}
 }

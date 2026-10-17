@@ -46,3 +46,11 @@ func argStrList(args map[string]any, key string) []string {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
+
+// gitWithToken wraps a git command so it reads the credential from the shell
+// variable GIT_TOKEN (fed via stdin, never in the command/env). The helper
+// prints the username + token; `unset` clears it immediately after.
+func gitWithToken(cmd, user string) string {
+	helper := `!f() { echo "username=` + strings.ReplaceAll(user, `"`, ``) + `"; echo "password=$GIT_TOKEN"; }; f`
+	return `IFS= read -r GIT_TOKEN; git -c credential.helper='` + helper + `' ` + strings.TrimPrefix(cmd, "git ") + `; __rc=$?; unset GIT_TOKEN; exit $__rc`
+}

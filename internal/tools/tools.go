@@ -104,27 +104,24 @@ func (t *toolset) clone(ctx context.Context, args map[string]any, session, tenan
 	if remote == "" || path == "" {
 		return extension.ToolResultData{}, &extension.TypedError{Code: easybus.ToolResultErrorCodeInvalidArgument, Message: "remote and path are required"}
 	}
-	// The credential for the remote's host rides the `servers` config; git
-	// itself runs in the sandbox, so the token is passed via an env var (never
-	// on the command line, which the sandbox shell logs).
-	auth := t.authFor(session, tenant, remote)
 	depth := argInt(args, "depth", 1)
-	cmd := fmt.Sprintf("git clone --depth %d %s %s", depth, shellQuote(remote), shellQuote(path))
-	if depth <= 0 {
-		cmd = fmt.Sprintf("git clone %s %s", shellQuote(remote), shellQuote(path))
+	auth := t.authFor(session, tenant, remote)
+	clone := "git clone " + shellQuote(remote) + " " + shellQuote(path)
+	if depth > 0 {
+		clone = "git clone --depth " + fmt.Sprintf("%d", depth) + " " + shellQuote(remote) + " " + shellQuote(path)
 	}
+	// The token never appears in `command` or `env` (both are observable in the
+	// sandbox); it rides stdin only and is unset right after the clone.
 	if auth.token != "" {
-		// Inject the token via an https credential helper env (git reads it).
-		cmd = fmt.Sprintf("git -c credential.helper='!f() { echo username=%s; echo password=$GIT_TOKEN; }; f' clone --depth %d %s %s", auth.user, depth, shellQuote(remote), shellQuote(path))
-		if depth <= 0 {
-			cmd = fmt.Sprintf("git -c credential.helper='!f() { echo username=%s; echo password=$GIT_TOKEN; }; f' clone %s %s", auth.user, shellQuote(remote), shellQuote(path))
+		clone = gitWithToken(clone, auth.user)
+		if _, err := r.RunSecret(ctx, "", clone, auth.token, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
+		}
+	} else {
+		if _, err := r.Run(ctx, "", clone, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
 		}
 	}
-	out, err := r.Run(ctx, "", cmd, 300*time.Second)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	_ = out
 	head, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "--abbrev-ref", "HEAD")
 	hash, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "--short", "HEAD")
 	return extension.ToolResultData{
@@ -264,8 +261,17 @@ func (t *toolset) pull(ctx context.Context, args map[string]any, session, tenant
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if _, err := r.Git(ctx, path, 300*time.Second, "pull", "--ff-only"); err != nil {
-		return extension.ToolResultData{}, err
+	auth := t.authFor(session, tenant, r.RemoteURL(ctx, path))
+	pull := "git -C " + shellQuote(path) + " pull --ff-only"
+	if auth.token != "" {
+		pull = gitWithToken(pull, auth.user)
+		if _, err := r.RunSecret(ctx, "", pull, auth.token, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
+		}
+	} else {
+		if _, err := r.Run(ctx, "", pull, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
+		}
 	}
 	br, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "--abbrev-ref", "HEAD")
 	hash, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "--short", "HEAD")
@@ -278,15 +284,23 @@ func (t *toolset) push(ctx context.Context, args map[string]any, session, tenant
 		return extension.ToolResultData{}, err
 	}
 	branch := argStr(args, "branch")
-	gitArgs := []string{"push"}
+	push := "git -C " + shellQuote(path) + " push"
 	if argBool(args, "force", false) {
-		gitArgs = append(gitArgs, "--force-with-lease")
+		push += " --force-with-lease"
 	}
 	if branch != "" {
-		gitArgs = append(gitArgs, "origin", shellQuote(branch))
+		push += " origin " + shellQuote(branch)
 	}
-	if _, err := r.Git(ctx, path, 300*time.Second, gitArgs...); err != nil {
-		return extension.ToolResultData{}, err
+	auth := t.authFor(session, tenant, r.RemoteURL(ctx, path))
+	if auth.token != "" {
+		push = gitWithToken(push, auth.user)
+		if _, err := r.RunSecret(ctx, "", push, auth.token, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
+		}
+	} else {
+		if _, err := r.Run(ctx, "", push, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, err
+		}
 	}
 	if branch == "" {
 		branch = "current branch"
