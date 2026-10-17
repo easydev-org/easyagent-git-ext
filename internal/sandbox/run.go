@@ -97,7 +97,7 @@ func (r *Runner) Git(ctx context.Context, path string, timeout time.Duration, ar
 	parts := make([]string, 0, len(args)+3)
 	parts = append(parts, "git", "-C", shellQuote(path))
 	for _, a := range args {
-		parts = append(parts, a)
+		parts = append(parts, quoteArg(a))
 	}
 	return r.Run(ctx, "", strings.Join(parts, " "), timeout)
 }
@@ -105,4 +105,19 @@ func (r *Runner) Git(ctx context.Context, path string, timeout time.Duration, ar
 // shellQuote single-quotes a path for the sandbox shell (mvdan-sh POSIX).
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// quoteArg quotes a git argument only when it contains a shell metacharacter,
+// so plain flags/refs stay readable but "(%an)" and paths are safe.
+func quoteArg(a string) string {
+	if a == "" {
+		return "''"
+	}
+	if strings.IndexFunc(a, func(r rune) bool {
+		return !(r == '-' || r == '_' || r == '.' || r == '/' || r == ':' || r == '=' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'))
+	}) < 0 {
+		return a
+	}
+	return shellQuote(a)
 }
