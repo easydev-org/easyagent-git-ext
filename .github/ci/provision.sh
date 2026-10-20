@@ -22,13 +22,23 @@ USER_PASS="${USER_PASS:-DevPass123!}"
 USER_MAIL="${USER_MAIL:-agentdev@example.com}"
 REPO="${REPO:-mrflow}"
 
-# `docker exec` runs as ROOT by default, but the image is built `USER 1000:1000`
-# with GITEA_WORK_DIR=/var/lib/gitea. As root the CLI reads a different work dir,
-# so it cannot see the config the server wrote — and the failure is silent once
-# stderr is discarded. -u matches the container user, -w matches its work dir.
+# Point the CLI at the config the SERVER wrote.
+#
+# Two things are easy to get wrong here, and both fail in ways that do not name
+# the cause:
+#   * `docker exec` runs as ROOT while the image runs as uid 1000 (`git`), so the
+#     CLI would read a different home/work dir. `-u git` matches the server.
+#   * the work dir is a property of the IMAGE VARIANT. This one (gitea/gitea)
+#     keeps everything under /data/gitea; /var/lib/gitea belongs to the ROOTLESS
+#     variant. Using the wrong one makes `docker exec` itself fail with
+#     "chdir to cwd ... no such file or directory" — before gitea even starts —
+#     and the CLI's own stderr is empty, so the error looks like a database
+#     problem.
+GITEA_WORKDIR="${GITEA_WORKDIR:-/data/gitea}"
+GITEA_CONFIG="${GITEA_CONFIG:-/data/gitea/conf/app.ini}"
 gitea() {
-  docker exec -u git -w /var/lib/gitea "$GITEA_CONTAINER" \
-    /usr/local/bin/gitea --work-path /var/lib/gitea --config /data/gitea/conf/app.ini "$@"
+  docker exec -u git -w "$GITEA_WORKDIR" "$GITEA_CONTAINER" \
+    /usr/local/bin/gitea --work-path "$GITEA_WORKDIR" --config "$GITEA_CONFIG" "$@"
 }
 
 log() { echo "[provision] $*" >&2; }
@@ -42,7 +52,7 @@ fail_diag() {
   log "diagnostics:"
   log "  container user:  $(docker exec "$GITEA_CONTAINER" id 2>&1 || true)"
   log "  config file:     $(docker exec "$GITEA_CONTAINER" ls -l /data/gitea/conf/app.ini 2>&1 || true)"
-  log "  work dir:        $(docker exec "$GITEA_CONTAINER" ls -ld /var/lib/gitea 2>&1 || true)"
+  log "  work dir:        $(docker exec "$GITEA_CONTAINER" ls -ld "$GITEA_WORKDIR" 2>&1 || true)"
   log "  binary:          $(docker exec "$GITEA_CONTAINER" ls -l /usr/local/bin/gitea 2>&1 || true)"
   log "  users:           $(docker exec -u git "$GITEA_CONTAINER" id 2>&1 || true)"
 }
@@ -55,8 +65,8 @@ if ! gitea admin user list >/dev/null 2>"$TMP_ERR"; then
   # Capture BOTH streams: a docker-exec failure is reported by docker itself, not
   # by the gitea binary, so redirecting only the command's stderr loses it.
   log "the gitea CLI cannot reach its database: '$(cat "$TMP_ERR")'"
-  log "raw attempt: $(docker exec -u git -w /var/lib/gitea "$GITEA_CONTAINER" \
-      /usr/local/bin/gitea --work-path /var/lib/gitea --config /data/gitea/conf/app.ini \
+  log "raw attempt: $(docker exec -u git -w "$GITEA_WORKDIR" "$GITEA_CONTAINER" \
+      /usr/local/bin/gitea --work-path "$GITEA_WORKDIR" --config "$GITEA_CONFIG" \
       admin user list 2>&1 | head -5)"
   fail_diag
   exit 1
