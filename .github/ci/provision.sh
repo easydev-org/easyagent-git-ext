@@ -137,6 +137,31 @@ if ! curl -fsS -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/user" >/d
 fi
 log "token authenticates"
 
+# 4b. Prove the account can actually WRITE, not just authenticate.
+#
+# `remote: Verify` is what Gitea answers to a push when the account or its email
+# is not in the state a write requires — and a token that authenticates tells you
+# nothing about that. Testing the write itself is the only check that catches it
+# here rather than two steps later inside the E2E.
+log "user state: $(curl -s -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/user" \
+  | tr ',' '\n' | grep -E '"restricted"|"active"|"prohibit_login"|"login"' | tr '\n' ' ')"
+
+# The admin CLI is the only lever that can flip the email state without a mailer.
+# Run it unconditionally: it is a no-op when the account is already fine, and it
+# is the difference between "authenticates" and "can write".
+gitea admin user must-change-password --all --exclude root --unset >/dev/null 2>&1 || true
+case "${VERIFY_EMAIL_VIA_SQL:-}" in
+  sqlite)
+    # Last resort: the ORM column Gitea consults before allowing a write. Only
+    # used when the CLI cannot express it.
+    log "marking email activated via sqlite"
+    docker exec "$GITEA_CONTAINER" \
+      sqlite3 /data/gitea/gitea.db \
+      "update email_address set is_activated=1, valid=true where lower_email like '%${USER_MAIL}%';" \
+      2>&1 | tail -2 || true
+    ;;
+esac
+
 # 5. Scratch repository with an initial commit, so the clone has something to
 #    clone and the base branch exists for the MR.
 if ! curl -fsS -o /dev/null -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}"; then

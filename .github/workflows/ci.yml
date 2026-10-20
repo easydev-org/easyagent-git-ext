@@ -71,6 +71,11 @@ jobs:
 
       - name: provision user, token and scratch repo
         id: provision
+        env:
+          # SQLite is the CI database, so the email row can be flipped directly if
+          # the CLI cannot express it. Without this, a push is refused with
+          # "remote: Verify" and nothing says why.
+          VERIFY_EMAIL_VIA_SQL: sqlite
         run: |
           set -euo pipefail
           token=$(.github/ci/provision.sh)

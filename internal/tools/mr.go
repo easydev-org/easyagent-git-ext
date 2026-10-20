@@ -90,12 +90,21 @@ func (t *toolset) submitMR(ctx context.Context, args map[string]any, session, te
 		shellQuote(local) + ":" + shellQuote("refs/heads/"+headBranch)
 	if auth.token != "" {
 		push = gitWithToken(push, auth.user)
-		if _, err := r.RunSecret(ctx, "", push, auth.token, 300*time.Second); err != nil {
-			return extension.ToolResultData{}, err
+		if out, err := r.RunSecret(ctx, "", push, auth.token, 300*time.Second); err != nil {
+			// Include git's OWN output. A bare "remote: Verify" tells the caller
+			// nothing about what to fix, and the reason (unverified account, email
+			// mismatch, protected branch) is only in this text.
+			return extension.ToolResultData{}, &extension.TypedError{
+				Code:    easybus.ToolResultErrorCodeBusiness,
+				Message: fmt.Sprintf("push to %s failed: %v\n%s", headBranch, err, strings.TrimSpace(out)),
+			}
 		}
 	} else {
-		if _, err := r.Run(ctx, "", push, 300*time.Second); err != nil {
-			return extension.ToolResultData{}, err
+		if out, err := r.Run(ctx, "", push, 300*time.Second); err != nil {
+			return extension.ToolResultData{}, &extension.TypedError{
+				Code:    easybus.ToolResultErrorCodeBusiness,
+				Message: fmt.Sprintf("push to %s failed: %v\n%s", headBranch, err, strings.TrimSpace(out)),
+			}
 		}
 	}
 
