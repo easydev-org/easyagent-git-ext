@@ -78,19 +78,23 @@ jobs:
           VERIFY_EMAIL_VIA_SQL: sqlite
         run: |
           set -euo pipefail
-          # The token comes back in a FILE: a bare value on stdout is parsed by
+          # Credentials come back in a FILE: a bare value on stdout is parsed by
           # the runner as a workflow command and rejected with
-          # "Invalid format '<token>'", which reads like a leak but is a
-          # protocol collision.
-          .github/ci/provision.sh "$RUNNER_TEMP/gitea-token"
-          token="$(tr -d '[:space:]' <"$RUNNER_TEMP/gitea-token")"
-          if [ -z "$token" ]; then
-            echo "provision produced no token"; exit 1
+          # "Invalid format '<token>'", which reads like a leak but is a protocol
+          # collision. The USER is needed too — Gitea authenticates
+          # <real-user>:<token> and rejects placeholders.
+          creds="$RUNNER_TEMP/gitea-creds"
+          .github/ci/provision.sh "$creds"
+          # shellcheck disable=SC1090
+          . "$creds"
+          if [ -z "${GITEA_TOKEN:-}" ] || [ -z "${GITEA_USER:-}" ]; then
+            echo "provision produced no credentials"; exit 1
           fi
-          echo "::add-mask::$token"
+          echo "::add-mask::$GITEA_TOKEN"
           {
+            echo "GITEA_USER=$GITEA_USER"
             echo "GITEA_TOKEN<<CI_EOF"
-            echo "$token"
+            echo "$GITEA_TOKEN"
             echo "CI_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -109,6 +113,7 @@ jobs:
           E2E_REMOTE: http://127.0.0.1:3000/agentdev/mrflow.git
           E2E_GITEA_HOST: 127.0.0.1
           E2E_GITEA_API: http://127.0.0.1:3000
+          E2E_GITEA_USER: ${{ steps.provision.outputs.GITEA_USER }}
           E2E_GITEA_TOKEN: ${{ steps.provision.outputs.GITEA_TOKEN }}
         run: go test ./interop/mrflow/ -run TestMRWorkflow -v -timeout 600s
 

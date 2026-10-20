@@ -15,10 +15,10 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	easybusagent "github.com/easydev-org/easybus-sdk/agent"
-	"github.com/easydev-org/easybus-sdk/transport/nats"
 	workerv1 "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1"
 	"github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1/workerv1connect"
+	easybusagent "github.com/easydev-org/easybus-sdk/agent"
+	"github.com/easydev-org/easybus-sdk/transport/nats"
 )
 
 type stub struct {
@@ -47,9 +47,9 @@ func (s *stub) JobOutput(_ context.Context, req *workerv1.JobOutputRequest) (*wo
 }
 
 func main() {
-	root := os.Args[1]        // sandbox workspace root
-	natsURL := os.Args[2]     // nats url
-	remote := os.Args[3]      // git remote (local bare repo)
+	root := os.Args[1]    // sandbox workspace root
+	natsURL := os.Args[2] // nats url
+	remote := os.Args[3]  // git remote (local bare repo)
 
 	st := &stub{root: root, out: map[string][]string{}}
 	srv := connect.NewServer()
@@ -60,7 +60,9 @@ func main() {
 	time.Sleep(300 * time.Millisecond)
 
 	bus, err := nats.Connect(natsURL)
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 	defer bus.Close()
 	a := easybusagent.New(bus)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -79,8 +81,14 @@ func main() {
 
 	call := func(tool string, args map[string]any) {
 		tr, err := a.CallTool(ctx, "t1", "s", "git", tool, fmt.Sprintf("c-%d", time.Now().UnixNano()), args)
-		if err != nil { fmt.Printf("%s: ERR %v\n", tool, err); return }
-		if tr.Error != nil { fmt.Printf("%s: toolerr %v\n", tool, tr.Error); return }
+		if err != nil {
+			fmt.Printf("%s: ERR %v\n", tool, err)
+			return
+		}
+		if tr.Error != nil {
+			fmt.Printf("%s: toolerr %v\n", tool, tr.Error)
+			return
+		}
 		fmt.Printf("%s: %s\n", tool, strings.TrimSpace(tr.Content))
 	}
 

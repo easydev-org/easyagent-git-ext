@@ -216,9 +216,11 @@ log "repository ready"
 # the job. A file cannot be mistaken for log output.
 #   $1 = optional path to write the token to (default: a temp file we report).
 if [ -n "${1:-}" ]; then
-  printf '%s' "${TOKEN}" >"$1"
+  # Both halves are needed: Gitea authenticates `<real-user>:<token>`, and the
+  # username cannot be a placeholder (that is what produced "remote: Verify").
+  printf 'GITEA_USER=%s\nGITEA_TOKEN=%s\n' "${USER_NAME}" "${TOKEN}" >"$1"
   chmod 600 "$1"
-  log "token written to $1"
+  log "credentials written to $1"
 else
   log "TOKEN_PATH is not set; pass a path as the first argument"
   exit 1

@@ -185,6 +185,7 @@ func TestMRWorkflow(t *testing.T) {
 	token := os.Getenv("E2E_GITEA_TOKEN")
 	apiURL := os.Getenv("E2E_GITEA_API")
 	host := os.Getenv("E2E_GITEA_HOST")
+	user := os.Getenv("E2E_GITEA_USER")
 	if extBin == "" || remote == "" || token == "" || apiURL == "" || host == "" {
 		t.Skip("set E2E_EXT_BIN, E2E_REMOTE, E2E_GITEA_TOKEN, E2E_GITEA_API, E2E_GITEA_HOST")
 	}
@@ -264,7 +265,11 @@ func TestMRWorkflow(t *testing.T) {
 	must(t, a.SetConfig(ctx, tenant, extID, "sandboxes",
 		fmt.Sprintf(`[{"name":"pod-a","url":%q,"token":""}]`, workerURL), "", nil, nil))
 	must(t, a.SetConfig(ctx, tenant, extID, "servers",
-		fmt.Sprintf(`[{"host":%q,"kind":"gitea","token":%q,"api_url":%q}]`, host, token, apiURL),
+		// `user` is REQUIRED for push: Gitea authenticates <real-user>:<token> and
+		// looks the username up as an account, so a placeholder yields the opaque
+		// "remote: Verify" (or "Unauthorized" if the token is put there instead).
+		fmt.Sprintf(`[{"host":%q,"kind":"gitea","token":%q,"user":%q,"api_url":%q}]`,
+			host, token, user, apiURL),
 		"", nil, nil))
 
 	call := func(tool string, args map[string]any) (string, error) {
