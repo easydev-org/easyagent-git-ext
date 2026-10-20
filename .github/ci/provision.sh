@@ -156,21 +156,24 @@ gitea admin user must-change-password --all --exclude root --unset >/dev/null 2>
 # an update that silently matched no rows is exactly how this failed before.
 if [ "${VERIFY_EMAIL_VIA_SQL:-}" = "sqlite" ]; then
   log "activating the account's email"
-  # A SQL FILE keeps the quoting sane: nesting sqlite3 inside `sh -c` inside a
-  # shell function is how the previous attempt silently matched no rows.
-  SQL_FILE="$(mktemp)"
-  cat >"$SQL_FILE" <<SQL
-UPDATE email_address SET is_activated=1, valid=1 WHERE lower_email='${USER_MAIL}';
-UPDATE "user" SET is_active=1, prohibit_login=0 WHERE lower_name='${USER_NAME}';
-SELECT lower_email, is_activated FROM email_address WHERE lower_email='${USER_MAIL}';
-SQL
-  docker cp "$SQL_FILE" "$GITEA_CONTAINER:/tmp/activate.sql" >/dev/null 2>&1 || true
-  act_out="$(docker exec "$GITEA_CONTAINER" sh -c '
-      if ! command -v sqlite3 >/dev/null 2>&1; then echo "no sqlite3 in image"; exit 0; fi
-      sqlite3 /data/gitea/gitea.db < /tmp/activate.sql
-  ' 2>&1)"
-  rm -f "$SQL_FILE"
-  log "email activation: $(printf '%s' "$act_out" | tr '\n' ' ')"
+  # `gitea/gitea` ships no sqlite3 binary, so the DB cannot be edited from inside
+  # the container. Use Gitea's OWN migration-free path instead: the admin CLI's
+  # `user list` already proves the ORM can read, and the account is already
+  # active — so what remains is the per-ADDRESS flag.
+  #
+  # Gitea 1.22 has no CLI for that flag, but it does have an API for the account's
+  # own emails, and the token can call it. Verifying the address makes the push
+  # path stop answering "remote: Verify".
+  emails="$(curl -s -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/user/emails" || true)"
+  log "current emails: $(printf '%s' "$emails" | tr '\n' ' ' | cut -c1-300)"
+  # Try to re-add the same address: Gitea treats that as "confirm" for the
+  # primary address on some versions, and otherwise reports why not.
+  add_out="$(curl -s -w ' [%{http_code}]' -X POST -H "Authorization: token ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"emails\":[\"${USER_MAIL}\"]}" "${GITEA_URL}/api/v1/user/emails" || true)"
+  log "email add: $(printf '%s' "$add_out" | cut -c1-300)"
+  emails="$(curl -s -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/user/emails" || true)"
+  log "emails after: $(printf '%s' "$emails" | tr '\n' ' ' | cut -c1-400)"
 fi
 
 # 5. Scratch repository with an initial commit, so the clone has something to
