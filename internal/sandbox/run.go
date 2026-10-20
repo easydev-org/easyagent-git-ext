@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	workerv1 "github.com/easydev-org/easyagent-git-ext/gen/worker/v1"
+	workerv1 "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1"
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 )

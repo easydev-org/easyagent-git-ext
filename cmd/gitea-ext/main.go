@@ -1,4 +1,4 @@
-// Command git-ext is the easyagent git extension server: git operations
+// Command gitea-ext is the easyagent git extension server: git operations
 // (clone/status/log/diff/branch/checkout/add/commit/pull/push/show) run IN a
 // remote easyworker sandbox, over the easybus protocol. git runs in the sandbox
 // (via the worker's Execute RPC), so this binary needs no system git.
@@ -15,15 +15,15 @@ import (
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/sandbox"
-	"github.com/easydev-org/easyagent-git-ext/internal/tools"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/sandbox"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/tools"
 )
 
 //go:embed manifest.yaml
 var manifestYAML []byte
 
 func main() {
-	log := slog.Default().With("svc", "git-ext")
+	log := slog.Default().With("svc", "gitea-ext")
 
 	natsURL := envOr("NATS_URL", "nats://127.0.0.1:4222")
 	bus, err := nats.Connect(natsURL)

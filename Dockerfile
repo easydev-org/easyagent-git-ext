@@ -14,15 +14,15 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -trimpath -ldflags "-s -w" -o /out/git-ext ./cmd/git-ext
+RUN go build -trimpath -ldflags "-s -w" -o /out/gitea-ext ./cmd/gitea-ext
 
 FROM ${REGISTRY}/alpine:3.24
 RUN sed -i 's|dl-cdn.alpinelinux.org|mirrors.aliyun.com|g' /etc/apk/repositories \
     && apk add --no-cache ca-certificates
 WORKDIR /app
-COPY --from=build /out/git-ext /app/git-ext
+COPY --from=build /out/gitea-ext /app/gitea-ext
 # A writable home for the per-tenant repo cache (override with GITEXT_HOME).
 ENV GITEXT_HOME=/data/repos
 VOLUME ["/data"]
 EXPOSE 8080
-ENTRYPOINT ["/app/git-ext"]
+ENTRYPOINT ["/app/gitea-ext"]

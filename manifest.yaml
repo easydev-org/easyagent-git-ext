@@ -1,8 +1,8 @@
-id: git
+id: gitea
 version: 2.0
 lifecycle: [deleted]
 
-# git-ext: git operations against a repository inside a remote easyworker
+# gitea-ext: git operations against a repository inside a remote easyworker
 # sandbox. Every tool runs `git` IN the sandbox (via the worker Execute RPC),
 # so it needs no system git of its own. Each tool takes a `sandbox` (which
 # worker) and a `path` (the repository directory in that sandbox); the path
@@ -329,6 +329,55 @@ tools:
             zh: "版本（默认 HEAD）。"
       required: [sandbox, path, file]
     required_config: [sandboxes, servers]
+  - name: git-remote-ls
+    description: >-
+      List a REMOTE repository's branches and tags WITHOUT cloning it, straight
+      from the forge's API (one request). Use this to answer "which branches
+      exist" or "what is the latest commit" before deciding whether to clone.
+      Needs no sandbox.
+    descriptions:
+      zh: >-
+        不克隆、直接通过 forge API（一次请求）列出远端仓库的分支与标签。适合回答
+        「有哪些分支」「最新提交是哪个」，再决定要不要克隆。无需沙箱。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL, e.g. https://git.example.com/owner/repo.git"
+          descriptions:
+            zh: "仓库地址，如 https://git.example.com/owner/repo.git"
+      required: [remote]
+    required_config: [servers]
+  - name: git-remote-show
+    description: >-
+      Print ONE file from a remote repository WITHOUT cloning it, straight from
+      the forge's API. Ideal for reading a README, a config file or a Dockerfile
+      before deciding whether a clone is worth it. Needs no sandbox.
+    descriptions:
+      zh: >-
+        不克隆、直接通过 forge API 输出远端仓库中的单个文件。适合在决定是否克隆前
+        先读 README、配置文件或 Dockerfile。无需沙箱。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL, e.g. https://git.example.com/owner/repo.git"
+          descriptions:
+            zh: "仓库地址，如 https://git.example.com/owner/repo.git"
+        path:
+          type: string
+          description: "File path inside the repository (e.g. README.md)."
+          descriptions:
+            zh: "仓库内文件路径（如 README.md）。"
+        ref:
+          type: string
+          description: "Branch, tag or commit (default: the repository's default branch)."
+          descriptions:
+            zh: "分支、标签或提交（默认：仓库的默认分支）。"
+      required: [remote, path]
+    required_config: [servers]
 
 config:
   - name: sandboxes
@@ -375,21 +424,62 @@ config:
         descriptions:
           zh: 沙箱操作系统，供按平台区分的工具使用。
   - name: servers
-    type: string
+    type: list
+    item_type: object
     kind: secret
     scope: global
     description: >-
-      JSON list of git hosts to authenticate against, each
-      {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}.
-      A server is selected by the remote URL host; `kind` picks the HTTPS
-      basic-auth username (github -> x-access-token, gitlab -> oauth2, gitea ->
-      the real account). SECRET: never returned to a client.
+      The git hosts to authenticate against. A server is selected by the remote
+      URL's host; `kind` picks the HTTPS basic-auth username (github ->
+      x-access-token, gitlab -> oauth2, gitea -> the real account) AND which
+      platform API the read-only remote tools use. SECRET: never returned to a
+      client.
     descriptions:
       zh: >-
-        需要认证的 git 主机列表（JSON），每项
-        {"host":"github.com","kind":"github|gitlab|gitea|generic","token":"...","user":"..."}。
-        按 remote URL 的主机选择；`kind` 决定 HTTPS basic-auth 用户名（github → x-access-token，
-        gitlab → oauth2，gitea → 真实账号）。机密：永不返回给客户端。
+        需要认证的 git 主机列表。按 remote URL 的主机选择；`kind` 既决定 HTTPS
+        basic-auth 用户名（github → x-access-token，gitlab → oauth2，gitea → 真实账号），
+        也决定只读远端工具使用哪个平台 API。机密：永不返回给客户端。
+    fields:
+      - name: host
+        type: string
+        format: host
+        required: true
+        description: Hostname only, no scheme and no path (e.g. github.com).
+        descriptions:
+          zh: 仅主机名，不含协议和路径（如 github.com）。
+      - name: kind
+        type: enum
+        enum_values: [github, gitlab, gitea, generic]
+        default: generic
+        description: >-
+          The forge. It selects the basic-auth username and the platform API used
+          by the read-only remote tools.
+        descriptions:
+          zh: 平台类型。决定 basic-auth 用户名，以及只读远端工具所用平台 API。
+      - name: token
+        type: string
+        kind: secret
+        description: >-
+          Personal access token. Empty = anonymous (public repositories only).
+        descriptions:
+          zh: 个人访问令牌。留空表示匿名（仅可读公开仓库）。
+      - name: user
+        type: string
+        description: >-
+          Overrides the basic-auth username. Gitea (and generic hosts) need the
+          real account name.
+        descriptions:
+          zh: 覆盖 basic-auth 用户名。Gitea（及通用主机）需要真实账号名。
+      - name: api_url
+        type: string
+        format: uri
+        description: >-
+          Optional API base override, e.g. https://git.example.com/api/v1 for a
+          self-hosted forge served from a different origin than the git host.
+        descriptions:
+          zh: >-
+            可选的 API 基础地址覆盖，如自建 forge 的 https://git.example.com/api/v1
+            （API 与 git 主机不同源时使用）。
   - name: require-auth
     type: boolean
     scope: global

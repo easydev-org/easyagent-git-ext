@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build and push the easyagent-git-ext image WITHOUT a local build daemon:
+# Build and push the easyagent-gitea-ext image WITHOUT a local build daemon:
 # buildkitd (in-cluster) -> docker archive -> skopeo -> registry OCI.
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REGISTRY="${REGISTRY:-git.agent.svc.cluster.local}"
 NAMESPACE="${NAMESPACE:-easyagent}"
-NAME="${NAME:-git-ext}"
+NAME="${NAME:-gitea-ext}"
 TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
 DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
 BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"

@@ -1,4 +1,4 @@
-// live e2e driver for git-ext: connects an easybus agent to a running git-ext,
+// live e2e driver for gitea-ext: connects an easybus agent to a running gitea-ext,
 // points it at a sandbox worker (WORKER_TOKEN, already claimed) + a real remote,
 // and drives git-clone/status/log/branch. git runs IN the sandbox.
 //

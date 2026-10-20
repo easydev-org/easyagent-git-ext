@@ -1,4 +1,4 @@
-// Package config parses the git-ext config knobs into a strongly-typed server
+// Package config parses the gitea-ext config knobs into a strongly-typed server
 // list. The config surface is intentionally small:
 //
 //   - `servers` (secret, JSON): a list of {host, kind, token, user?} — the
@@ -80,14 +80,16 @@ func SelectSandbox(list []Sandbox, wanted string) (Sandbox, error) {
 	return Sandbox{}, fmt.Errorf("unknown sandbox %q (known: %s)", wanted, strings.Join(names, ", "))
 }
 
-// ServerKind is the forge a host belongs to. It selects the HTTPS basic-auth
-// username convention (GitHub wants `x-access-token`, GitLab `oauth2`, Gitea a
-// real username). `generic` uses the plain username.
+// ServerKind is the forge a host belongs to.
+//
+// ONLY Gitea — and Forgejo, which implements the Gitea API — is supported. GitHub
+// and GitLab were removed on purpose: one forge verified against a real server
+// beats three half-verified API shapes. A `generic` host still works for
+// clone/push (plain git over HTTPS), but NOT for the read-only remote tools,
+// which need the platform API.
 type ServerKind string
 
 const (
-	KindGitHub  ServerKind = "github"
-	KindGitLab  ServerKind = "gitlab"
 	KindGitea   ServerKind = "gitea"
 	KindGeneric ServerKind = "generic"
 )
@@ -102,9 +104,38 @@ type Server struct {
 	Token string `json:"token"`
 	// User overrides the basic-auth username (Gitea needs the real account).
 	User string `json:"user"`
+	// APIURL overrides the platform API base (no trailing slash). Empty = derive
+	// it from Host and Kind. Needed when a self-hosted forge serves its API from
+	// a different origin than the git host, or under a sub-path.
+	APIURL string `json:"api_url,omitempty"`
 }
 
-// Config is the parsed, validated git-ext configuration.
+// APIBase returns the platform API base for this server (no trailing slash).
+//
+// The read-only remote tools talk to the FORGE's HTTP API rather than cloning,
+// because reading one file out of a large repo should not download the repo.
+// Each kind exposes a different base:
+//
+//	github  https://api.github.com
+//	gitlab  https://<host>/api/v4
+//	gitea   https://<host>/api/v1
+//
+// `generic` has no comparable API, so APIBase returns "" and the caller reports
+// that remote reads are unsupported for that host (rather than guessing a URL
+// that would 404).
+func (s Server) APIBase() string {
+	if s.APIURL != "" {
+		return strings.TrimRight(s.APIURL, "/")
+	}
+	switch s.Kind {
+	case KindGitea:
+		return "https://" + s.Host + "/api/v1"
+	default:
+		return ""
+	}
+}
+
+// Config is the parsed, validated gitea-ext configuration.
 type Config struct {
 	// Sandboxes is the set of easyworker sandboxes git runs on (required).
 	Sandboxes     []Sandbox
@@ -235,16 +266,9 @@ func (s Server) AuthUser() string {
 	if s.User != "" {
 		return s.User
 	}
-	switch s.Kind {
-	case KindGitHub:
-		return "x-access-token"
-	case KindGitLab:
-		return "oauth2"
-	default:
-		// Gitea and generic hosts want a real username; "token" is the widely
-		// accepted placeholder (and is what most hosts ignore).
-		return "token"
-	}
+	// Gitea (and every generic host) wants a real username here; "token" is the
+	// widely accepted placeholder and is what most servers ignore.
+	return "token"
 }
 
 func orDefault(v, def string) string {

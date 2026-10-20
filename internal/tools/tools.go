@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/config"
-	"github.com/easydev-org/easyagent-git-ext/internal/i18n"
-	"github.com/easydev-org/easyagent-git-ext/internal/sandbox"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/config"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/i18n"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/sandbox"
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 )
@@ -42,6 +42,10 @@ func Registry(d Deps) map[string]Handler {
 		"git-pull":     t.pull,
 		"git-push":     t.push,
 		"git-show":     t.show,
+		// Read-only remote tools: they talk to the Gitea/Forgejo API and need NO
+		// sandbox and NO clone, so `path` does not apply to them.
+		"git-remote-ls":   t.remoteLs,
+		"git-remote-show": t.remoteShow,
 	}
 }
 

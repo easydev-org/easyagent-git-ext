@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"github.com/easydev-org/easyagent-git-ext/internal/config"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/config"
 )
 
 // auth is the resolved HTTPS credential for a remote host.

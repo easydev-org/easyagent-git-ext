@@ -1,4 +1,4 @@
-// Package i18n localises the git-ext RUNTIME tool text (content + errors) using
+// Package i18n localises the gitea-ext RUNTIME tool text (content + errors) using
 // the easybus SDK's catalog core. Tool DESCRIPTIONS are localized through the
 // manifest; this covers the results a tool returns.
 package i18n
@@ -17,6 +17,8 @@ const (
 	MsgCommitted  = "committed"
 	MsgPulled     = "pulled"
 	MsgPushed     = "pushed"
+	// MsgRemoteNoRefs: a repository with no branches or tags (an empty init).
+	MsgRemoteNoRefs = "remoteNoRefs"
 )
 
 // Catalog is the message table (open locale set: add a column per language).
@@ -24,6 +26,10 @@ var Catalog = easybusi18n.Catalog{
 	MsgCloned: {
 		"en": "Cloned {remote} ({branch} @ {hash})",
 		"zh": "已克隆 {remote}（{branch} @ {hash}）",
+	},
+	MsgRemoteNoRefs: {
+		"en": "(no branches or tags)",
+		"zh": "（没有分支或标签）",
 	},
 	MsgOnBranch: {
 		"en": "On branch {branch}",

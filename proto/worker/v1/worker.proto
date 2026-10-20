@@ -28,7 +28,7 @@ syntax = "proto3";
 // WORKER_PORT pins the listen port). Client: ext-ops (ops-extension).
 package worker.v1;
 
-option go_package = "github.com/easydev-org/easyagent-git-ext/gen/worker/v1;workerv1";
+option go_package = "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1;workerv1";
 
 // ---- capability ----
 

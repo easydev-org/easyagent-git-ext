@@ -1,4 +1,4 @@
-# easyagent-git-ext
+# easyagent-gitea-ext
 
 A standalone easyagent **extension server** that runs git operations —
 `clone` / `status` / `log` / `diff` / `branch` / `checkout` / `add` / `commit` /
@@ -16,7 +16,7 @@ needs **no system git of its own**. Every tool takes:
   workspace root). **It must be a git repository**: every tool verifies it with
   `git -C <path> rev-parse --git-dir` and rejects the call otherwise.
 
-This is why git-ext depends on the same sandbox model as
+This is why gitea-ext depends on the same sandbox model as
 [`easyagent-sandbox-ext`](../easyagent-sandbox-ext): it **vendors the same
 worker.v1 proto** and speaks the worker Connect contract directly.
 
@@ -44,7 +44,7 @@ easyworker) and the Go client stubs are generated with `buf` (connect-go v2).
 ## Build / test
 
 ```bash
-go build ./cmd/git-ext
+go build ./cmd/gitea-ext
 go test ./...
 ```
 

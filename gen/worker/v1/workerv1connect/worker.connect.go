@@ -33,7 +33,7 @@ package workerv1connect
 import (
 	connect "connectrpc.com/connect/v2"
 	context "context"
-	v1 "github.com/easydev-org/easyagent-git-ext/gen/worker/v1"
+	v1 "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1"
 	sync "sync"
 )
 

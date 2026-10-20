@@ -4,10 +4,10 @@ import "testing"
 
 func TestParseServers(t *testing.T) {
 	raw := `[
-		{"host":"github.com","kind":"github","token":"ghp_x"},
-		{"host":"https://gitlab.corp.com/group","kind":"gitlab","token":"glpat_y"},
+		{"host":"git.corp.com","kind":"gitea","token":"pat_x"},
+		{"host":"https://git2.corp.com/group","kind":"gitea","token":"pat_y"},
 		{"host":"","token":"drop-me"},
-		{"host":"github.com","token":"dup-dropped"},
+		{"host":"git.corp.com","token":"dup-dropped"},
 		{"host":"gitea.example.com","kind":"gitea","token":"gt","user":"alice"}
 	]`
 	got, err := ParseServers(raw)
@@ -18,11 +18,12 @@ func TestParseServers(t *testing.T) {
 		t.Fatalf("got %d servers, want 3: %+v", len(got), got)
 	}
 	// The URL host is normalized to a bare hostname.
-	if got[1].Host != "gitlab.corp.com" {
+	if got[1].Host != "git2.corp.com" {
 		t.Errorf("host normalize = %q", got[1].Host)
 	}
-	// An empty kind defaults to generic.
-	if got[0].Kind != KindGitHub {
+	// The kind is preserved as configured (github/gitlab are no longer distinct
+	// kinds — only gitea and generic remain).
+	if got[0].Kind != KindGitea {
 		t.Errorf("kind = %q", got[0].Kind)
 	}
 }
@@ -41,8 +42,6 @@ func TestAuthUser(t *testing.T) {
 		s    Server
 		want string
 	}{
-		{Server{Kind: KindGitHub}, "x-access-token"},
-		{Server{Kind: KindGitLab}, "oauth2"},
 		{Server{Kind: KindGitea}, "token"},
 		{Server{Kind: KindGeneric}, "token"},
 		{Server{Kind: KindGitea, User: "alice"}, "alice"},

@@ -12,7 +12,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 
-	workerv1connect "github.com/easydev-org/easyagent-git-ext/gen/worker/v1/workerv1connect"
+	workerv1connect "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1/workerv1connect"
 )
 
 // Endpoint is the address + credential an operation runs against.

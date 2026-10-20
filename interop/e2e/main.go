@@ -1,6 +1,6 @@
 // e2e: a stub easyworker (real WorkerService over Connect) that actually runs
-// git in a temp dir, plus a driver that calls git-ext's tools through an
-// easybus agent. Proves the whole path: agent -> git-ext -> sandbox -> git.
+// git in a temp dir, plus a driver that calls gitea-ext's tools through an
+// easybus agent. Proves the whole path: agent -> gitea-ext -> sandbox -> git.
 package main
 
 import (
@@ -17,8 +17,8 @@ import (
 
 	easybusagent "github.com/easydev-org/easybus-sdk/agent"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
-	workerv1 "github.com/easydev-org/easyagent-git-ext/gen/worker/v1"
-	"github.com/easydev-org/easyagent-git-ext/gen/worker/v1/workerv1connect"
+	workerv1 "github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1"
+	"github.com/easydev-org/easyagent-gitea-ext/gen/worker/v1/workerv1connect"
 )
 
 type stub struct {
