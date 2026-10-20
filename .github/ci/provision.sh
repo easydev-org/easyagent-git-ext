@@ -35,12 +35,30 @@ log() { echo "[provision] $*" >&2; }
 TMP_ERR="$(mktemp)"
 trap 'rm -f "$TMP_ERR" "$CREATE_ERR" "$TOKEN_ERR" 2>/dev/null || true' EXIT
 
+# Prove `docker exec` itself works before blaming the CLI: an exec failure prints
+# to the shell's stderr, not the CLI's, so a bare "cannot reach its database" with
+# an empty message means exec never ran.
+fail_diag() {
+  log "diagnostics:"
+  log "  container user:  $(docker exec "$GITEA_CONTAINER" id 2>&1 || true)"
+  log "  config file:     $(docker exec "$GITEA_CONTAINER" ls -l /data/gitea/conf/app.ini 2>&1 || true)"
+  log "  work dir:        $(docker exec "$GITEA_CONTAINER" ls -ld /var/lib/gitea 2>&1 || true)"
+  log "  binary:          $(docker exec "$GITEA_CONTAINER" ls -l /usr/local/bin/gitea 2>&1 || true)"
+  log "  users:           $(docker exec -u git "$GITEA_CONTAINER" id 2>&1 || true)"
+}
+
 # 1. The admin account, created through the CLI (see the header for why).
 #    First prove the CLI can reach the database at all: if it cannot, every later
 #    step fails with an unrelated-looking message.
 log "checking the CLI can see the database"
 if ! gitea admin user list >/dev/null 2>"$TMP_ERR"; then
-  log "the gitea CLI cannot reach its database: $(cat "$TMP_ERR")"
+  # Capture BOTH streams: a docker-exec failure is reported by docker itself, not
+  # by the gitea binary, so redirecting only the command's stderr loses it.
+  log "the gitea CLI cannot reach its database: '$(cat "$TMP_ERR")'"
+  log "raw attempt: $(docker exec -u git -w /var/lib/gitea "$GITEA_CONTAINER" \
+      /usr/local/bin/gitea --work-path /var/lib/gitea --config /data/gitea/conf/app.ini \
+      admin user list 2>&1 | head -5)"
+  fail_diag
   exit 1
 fi
 
