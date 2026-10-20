@@ -53,6 +53,12 @@ github.com/easydev-org/easybus-sdk v0.3.0 h1:hbiG5St/JdX7SLL/yn266yQ0CB3HO79TXV8
 github.com/easydev-org/easybus-sdk v0.3.0/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
 github.com/easydev-org/easybus-sdk v0.3.1 h1:9eaDB2WgBiGemuqj8yeu01aAoEU+3eFwXRir5WdsnEk=
 github.com/easydev-org/easybus-sdk v0.3.1/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
+github.com/easydev-org/easybus-sdk v0.4.0 h1:Rp7g2KP+zRsdttJdzaNjOggG5P3Mo1E0CAu25T9sWUE=
+github.com/easydev-org/easybus-sdk v0.4.0/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
+github.com/easydev-org/easybus-sdk v0.5.0 h1:9eDTaBD/MeOL+os2R8jmh6y6hA8ObsWFxjjk2EjEvVY=
+github.com/easydev-org/easybus-sdk v0.5.0/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
+github.com/easydev-org/easybus-sdk v0.5.1 h1:ir0x4SgrNHvovam7s0fb+dxglf4y+71iU0+0/bxc4Zg=
+github.com/easydev-org/easybus-sdk v0.5.1/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=
