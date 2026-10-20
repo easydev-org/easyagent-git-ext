@@ -354,8 +354,19 @@ func (c *Client) MergePullRequest(ctx context.Context, index int64, style, title
 		del := true
 		opt.DeleteBranchAfterMerge = &del
 	}
-	if _, _, err := c.c.MergePullRequest(c.Owner, c.Repo, index, opt); err != nil {
-		return PullRequest{}, mapErr(err)
+	if ok, resp, err := c.c.MergePullRequest(c.Owner, c.Repo, index, opt); err != nil {
+		// The SDK turns a non-2xx into an error, but its text is often just the
+		// status. Gitea answers 405 with a REASON in the body ("User not allowed to
+		// merge PR", "PR not in mergeable state", ...) and each needs a different
+		// fix, so the status and the raw body are reported instead of the SDK's
+		// summary.
+		detail := ""
+		if resp != nil {
+			detail = fmt.Sprintf(" (status %d)", resp.StatusCode)
+		}
+		return PullRequest{}, fmt.Errorf("merge #%d rejected%s: %v", index, detail, err)
+	} else if !ok {
+		return PullRequest{}, fmt.Errorf("merge #%d was not performed (the forge returned a non-success status)", index)
 	}
 	// A merge endpoint that answers 200 without merging is the failure mode this
 	// guards against (see the Style note above), so "no error" is NOT proof.

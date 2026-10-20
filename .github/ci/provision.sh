@@ -208,6 +208,25 @@ if [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: token ${TOKEN}
 fi
 log "repository ready"
 
+# 6. Make sure the base branch has NO protection rule.
+#
+# Gitea's merge endpoint answers 405 when the user may not merge, and a protected
+# branch is the usual cause. The repo is created with auto_init, which normally
+# leaves `main` unprotected — but that is an assumption about a default, and the
+# failure it hides ("PR is not ready to be merged") is indistinguishable from a
+# permissions bug. Deleting any rule makes the intent explicit.
+prot="$(curl -s -H "Authorization: token ${TOKEN}" \
+  "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}/branch_protections" || true)"
+if [ "$(printf '%s' "$prot" | tr -d '[]\n ') " != "]" ]; then
+  log "removing existing branch protections"
+  for name in $(printf '%s' "$prot" | grep -o '"branch_name":"[^"]*"' | cut -d'"' -f4); do
+    curl -s -o /dev/null -X DELETE -H "Authorization: token ${TOKEN}" \
+      "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}/branch_protections/${name}" || true
+  done
+fi
+log "branch protections: $(curl -s -H "Authorization: token ${TOKEN}" \
+  "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}/branch_protections")"
+
 # Hand the token back through a FILE, not stdout.
 #
 # Printing it on stdout works under `t=$(script)` but is fragile: any line that
