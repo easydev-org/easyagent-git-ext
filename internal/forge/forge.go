@@ -335,11 +335,20 @@ func (c *Client) ReopenPullRequest(ctx context.Context, index int64) (PullReques
 // head branch afterwards, which is what keeps a repository from filling up with
 // one `agent/*` branch per submission.
 func (c *Client) MergePullRequest(ctx context.Context, index int64, style, title, message string, deleteBranch bool) (PullRequest, error) {
-	opt := gitea.MergePullRequestOption{
-		Title: title, Message: message,
+	// ALWAYS send an explicit style.
+	//
+	// The SDK marshals the option struct unconditionally, so an empty Style goes
+	// out as `"Do":""` — and Forgejo SILENTLY IGNORES a merge request whose Do is
+	// empty: it answers 200, the MR stays open, and the caller concludes the merge
+	// worked. Verified against a real server: `{"Do":"merge"}` merges,
+	// `{"Do":""}` is a no-op. So "omit and let the forge pick" is not an option
+	// here; the default has to be named.
+	if style == "" {
+		style = "merge"
 	}
-	if style != "" {
-		opt.Style = gitea.MergeStyle(style)
+	opt := gitea.MergePullRequestOption{
+		Style: gitea.MergeStyle(style),
+		Title: title, Message: message,
 	}
 	if deleteBranch {
 		del := true
@@ -348,6 +357,9 @@ func (c *Client) MergePullRequest(ctx context.Context, index int64, style, title
 	if _, _, err := c.c.MergePullRequest(c.Owner, c.Repo, index, opt); err != nil {
 		return PullRequest{}, mapErr(err)
 	}
+	// A merge endpoint that answers 200 without merging is the failure mode this
+	// guards against (see the Style note above), so "no error" is NOT proof.
+	// Confirm the MR actually left the open state before reporting success.
 	// The merge endpoint returns a bare boolean, so read the MR back to report
 	// the resulting state (merged vs merely closed) instead of guessing.
 	pr, _, err := c.c.GetPullRequest(c.Owner, c.Repo, index)
@@ -355,6 +367,11 @@ func (c *Client) MergePullRequest(ctx context.Context, index int64, style, title
 		// The merge itself succeeded; failing to re-read must not turn that into
 		// an error the caller would retry.
 		return PullRequest{Index: index, State: "merged"}, nil
+	}
+	if pr.State == gitea.StateOpen {
+		return PullRequest{}, fmt.Errorf(
+			"the forge accepted the merge request for #%d but the merge request is still open "+
+				"(nothing was merged)", index)
 	}
 	return toPullRequest(pr), nil
 }

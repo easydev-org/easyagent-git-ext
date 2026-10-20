@@ -98,3 +98,67 @@ func TestOpenPullRequestSurfacesForgeError(t *testing.T) {
 		t.Fatal("a rejected MR must return an error")
 	}
 }
+
+// TestMergeAlwaysSendsExplicitStyle is the regression test for a SILENT failure:
+// the SDK marshals the merge option unconditionally, so an empty Style went out
+// as {"Do":""} and Forgejo answered 200 while merging NOTHING. The caller was
+// told the merge succeeded and the MR stayed open.
+func TestMergeAlwaysSendsExplicitStyle(t *testing.T) {
+	var posted map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/version"):
+			_, _ = w.Write([]byte(`{"version":"1.22.0"}`))
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			_ = json.NewDecoder(r.Body).Decode(&posted)
+			_, _ = w.Write([]byte(`true`))
+		default:
+			// The MR is reported CLOSED afterwards, i.e. the merge took effect.
+			_, _ = w.Write([]byte(`{"number":3,"state":"closed","title":"t",` +
+				`"head":{"ref":"agent/x"},"base":{"ref":"main"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	c, err := New(srv.URL, "tok", "https://git.example.com/owner/repo.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MergePullRequest(context.Background(), 3, "", "", "", false); err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	if posted == nil {
+		t.Fatal("no merge request was posted")
+	}
+	// The field's JSON key is "Do"; it must carry a real style, never "".
+	if got := posted["Do"]; got != "merge" {
+		t.Errorf(`merge posted Do=%v, want "merge" — an empty value is a silent no-op on Forgejo`, got)
+	}
+}
+
+// TestMergeFailsWhenNothingWasMerged: if the forge says 200 but the MR is still
+// open, that must be an ERROR, not a success. Reporting success there is how the
+// empty-"Do" bug stayed invisible.
+func TestMergeFailsWhenNothingWasMerged(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/version"):
+			_, _ = w.Write([]byte(`{"version":"1.22.0"}`))
+		case strings.HasSuffix(r.URL.Path, "/merge"):
+			_, _ = w.Write([]byte(`true`)) // the forge claims success...
+		default:
+			// ...but the MR is STILL OPEN.
+			_, _ = w.Write([]byte(`{"number":3,"state":"open","title":"t",` +
+				`"head":{"ref":"agent/x"},"base":{"ref":"main"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	c, err := New(srv.URL, "tok", "https://git.example.com/owner/repo.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MergePullRequest(context.Background(), 3, "", "", "", false); err == nil {
+		t.Fatal("a merge that left the MR open must be reported as an error")
+	}
+}
