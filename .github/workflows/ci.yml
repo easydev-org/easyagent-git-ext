@@ -39,8 +39,13 @@ jobs:
 
       # `services:` cannot express Gitea's first-boot provisioning, so compose is
       # used instead: one file that also works for a developer locally.
+      #
+      # NOT `--wait`: that binds the step to the compose healthcheck and reports
+      # only "process exited 1" when it fails, which says nothing. Starting
+      # detached and polling the API in the next step keeps the reason visible
+      # (and the next step prints the container logs when it gives up).
       - name: start gitea (+ nats for parity with a real deployment)
-        run: docker compose -f .github/ci/compose.yaml up -d --wait
+        run: docker compose -f .github/ci/compose.yaml up -d
 
       - name: wait for gitea api
         run: |
@@ -51,7 +56,9 @@ jobs:
             fi
             sleep 2
           done
-          echo "gitea did not come up"; docker compose -f .github/ci/compose.yaml logs; exit 1
+          echo "gitea did not come up; container status:"; docker compose -f .github/ci/compose.yaml ps
+          echo "logs:"; docker compose -f .github/ci/compose.yaml logs --no-color
+          exit 1
 
       - name: provision user, token and scratch repo
         id: provision
