@@ -50,15 +50,30 @@ gitea admin user must-change-password --all --exclude root --unset >/dev/null 2>
 #    agent branch), issue write (open/comment/merge the MR), user write (create
 #    the scratch repo through /user/repos).
 log "minting token"
+# Capture stderr so a CLI rejection is VISIBLE. Silencing it here once cost a CI
+# round-trip: the job failed with a bare "exit code 1" and no reason.
+TOKEN_ERR="$(mktemp)"
 TOKEN="$(gitea admin user generate-access-token \
   --username "$USER_NAME" \
   --token-name "ci-$(date +%s%N)" \
-  --scopes "write:repository,write:issue,write:user,read:user" --raw 2>/dev/null | tr -d '\r' | tail -1)"
+  --scopes "write:repository,write:issue,write:user,read:user" --raw 2>"$TOKEN_ERR" \
+  | tr -d '\r' | tail -1)"
 
 if [ -z "${TOKEN}" ]; then
-  log "failed to mint a token"
-  exit 1
+  log "generate-access-token failed: $(cat "$TOKEN_ERR")"
+  # Retry without --scopes: older Gitea builds do not accept that flag, and a
+  # token with the default (full) scope is fine for CI.
+  log "retrying without --scopes"
+  TOKEN="$(gitea admin user generate-access-token \
+    --username "$USER_NAME" \
+    --token-name "ci-$(date +%s%N)" \
+    --raw 2>"$TOKEN_ERR" | tr -d '\r' | tail -1)"
+  if [ -z "${TOKEN}" ]; then
+    log "generate-access-token failed again: $(cat "$TOKEN_ERR")"
+    exit 1
+  fi
 fi
+rm -f "$TOKEN_ERR"
 
 # 4. The token must actually work before the test starts; otherwise the E2E fails
 #    with a confusing 401 several steps in.
