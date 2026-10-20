@@ -34,11 +34,6 @@ services:
       GITEA__service__ENABLE_NOTIFY_MAIL: "false"
       GITEA__service__REGISTER_EMAIL_CONFIRM: "false"
       GITEA__service__REGISTER_MANUAL_CONFIRM: "false"
-      # No mailer in CI: anything that would wait for an email confirmation would
-      # hang forever. Accounts created via the admin CLI are active immediately,
-      # and this keeps signup from introducing a second, half-working path.
-      GITEA__service__REGISTER_EMAIL_CONFIRM: "false"
-      GITEA__service__ENABLE_NOTIFY_MAIL: "false"
       GITEA__mailer__ENABLED: "false"
       GITEA__repository__DEFAULT_BRANCH: main
       # No gravatar lookups: the runner has no business reaching out to a third

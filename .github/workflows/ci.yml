@@ -23,6 +23,15 @@ jobs:
       - run: go vet ./...
       - name: test
         run: go test -race ./internal/... ./...
+      # yaml.safe_load accepts duplicate mapping keys, so a repeated env var passes
+      # locally and only fails on the runner with "mapping key already defined".
+      # Catching it here keeps that mistake local (it cost a CI round-trip once).
+      - name: lint CI yaml (duplicate keys)
+        run: |
+          # The runner has python3 but not necessarily pyyaml; installing it is
+          # cheap and keeps this check from silently doing nothing.
+          python3 -m pip install --quiet pyyaml
+          python3 .github/ci/check-yaml.py
 
   # Full workflow against a REAL Forgejo and a REAL NATS, both started by
   # docker compose inside the runner. Nothing is borrowed from a shared cluster:
