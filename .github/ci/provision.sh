@@ -73,24 +73,23 @@ if ! gitea admin user list >/dev/null 2>"$TMP_ERR"; then
 fi
 
 log "creating user $USER_NAME"
-CREATE_ERR="$(mktemp)"
+# Capture BOTH streams into one file: the CLI reports success on stdout and some
+# failures there too, so watching only stderr showed an empty message.
+CREATE_OUT="$(mktemp)"
 gitea admin user create \
   --username "$USER_NAME" \
   --password "$USER_PASS" \
   --email "$USER_MAIL" \
   --admin \
   --must-change-password=false \
-  --access-token \
-  --token-name "ci-$RANDOM" \
-  >/dev/null 2>"$CREATE_ERR" || {
-    # "already exists" is expected on a reused volume; anything else is not.
-    if grep -qi 'already exists\|user already exists' "$CREATE_ERR"; then
-      log "user already exists (continuing)"
-    else
-      log "create failed: $(cat "$CREATE_ERR")"
-    fi
-  }
-rm -f "$CREATE_ERR"
+  >"$CREATE_OUT" 2>&1 || true
+log "create said: $(tr '\n' ' ' <"$CREATE_OUT")"
+if ! grep -qi 'already exists\|successfully created' "$CREATE_OUT"; then
+  log "create did not report success"
+  fail_diag
+  exit 1
+fi
+rm -f "$CREATE_OUT"
 
 # 2. Clear must-change-password for every account except root. The create above
 #    passes --must-change-password=false, but that flag does not clear the bit on
@@ -102,30 +101,33 @@ gitea admin user must-change-password --all --exclude root --unset >/dev/null 2>
 #    agent branch), issue write (open/comment/merge the MR), user write (create
 #    the scratch repo through /user/repos).
 log "minting token"
-# Capture stderr so a CLI rejection is VISIBLE. Silencing it here once cost a CI
-# round-trip: the job failed with a bare "exit code 1" and no reason.
-TOKEN_ERR="$(mktemp)"
-TOKEN="$(gitea admin user generate-access-token \
-  --username "$USER_NAME" \
-  --token-name "ci-$(date +%s%N)" \
-  --scopes "write:repository,write:issue,write:user,read:user" --raw 2>"$TOKEN_ERR" \
-  | tr -d '\r' | tail -1)"
-
-if [ -z "${TOKEN}" ]; then
-  log "generate-access-token failed: $(cat "$TOKEN_ERR")"
-  # Retry without --scopes: older Gitea builds do not accept that flag, and a
-  # token with the default (full) scope is fine for CI.
-  log "retrying without --scopes"
-  TOKEN="$(gitea admin user generate-access-token \
+# Capture BOTH streams. Silencing stderr once cost a CI round-trip that ended in a
+# bare "exit code 1" with no reason at all.
+TOKEN_OUT="$(mktemp)"
+try_token() {
+  : >"$TOKEN_OUT"
+  gitea admin user generate-access-token \
     --username "$USER_NAME" \
     --token-name "ci-$(date +%s%N)" \
-    --raw 2>"$TOKEN_ERR" | tr -d '\r' | tail -1)"
+    "$@" --raw >"$TOKEN_OUT" 2>&1 || true
+  # The token is the last line that looks like one; everything else is chatter.
+  grep -oE '^[A-Za-z0-9]{20,}$' "$TOKEN_OUT" | tail -1
+}
+
+TOKEN="$(try_token --scopes 'write:repository,write:issue,write:user,read:user')"
+if [ -z "${TOKEN}" ]; then
+  log "generate-access-token (with --scopes) said: $(tr '\n' ' ' <"$TOKEN_OUT")"
+  # Retry without --scopes: not every Gitea build accepts that flag, and a token
+  # with the default (full) scope is fine for CI.
+  log "retrying without --scopes"
+  TOKEN="$(try_token)"
   if [ -z "${TOKEN}" ]; then
-    log "generate-access-token failed again: $(cat "$TOKEN_ERR")"
+    log "generate-access-token (no --scopes) said: $(tr '\n' ' ' <"$TOKEN_OUT")"
+    fail_diag
     exit 1
   fi
 fi
-rm -f "$TOKEN_ERR"
+rm -f "$TOKEN_OUT"
 
 # 4. The token must actually work before the test starts; otherwise the E2E fails
 #    with a confusing 401 several steps in.
