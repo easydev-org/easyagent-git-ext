@@ -22,14 +22,30 @@ USER_PASS="${USER_PASS:-DevPass123!}"
 USER_MAIL="${USER_MAIL:-agentdev@example.com}"
 REPO="${REPO:-mrflow}"
 
-gitea() { docker exec "$GITEA_CONTAINER" gitea "$@"; }
+# `docker exec` runs as ROOT by default, but the image is built `USER 1000:1000`
+# with GITEA_WORK_DIR=/var/lib/gitea. As root the CLI reads a different work dir,
+# so it cannot see the config the server wrote — and the failure is silent once
+# stderr is discarded. -u matches the container user, -w matches its work dir.
+gitea() {
+  docker exec -u git -w /var/lib/gitea "$GITEA_CONTAINER" \
+    /usr/local/bin/gitea --work-path /var/lib/gitea --config /data/gitea/conf/app.ini "$@"
+}
 
 log() { echo "[provision] $*" >&2; }
+TMP_ERR="$(mktemp)"
+trap 'rm -f "$TMP_ERR" "$CREATE_ERR" "$TOKEN_ERR" 2>/dev/null || true' EXIT
 
-# 1. The admin account. `forgejo/gitea admin user create` needs the binary's own
-#    working directory, which the image sets up; running as root is fine here
-#    because the CLI is invoked through the container's own entrypoint user.
+# 1. The admin account, created through the CLI (see the header for why).
+#    First prove the CLI can reach the database at all: if it cannot, every later
+#    step fails with an unrelated-looking message.
+log "checking the CLI can see the database"
+if ! gitea admin user list >/dev/null 2>"$TMP_ERR"; then
+  log "the gitea CLI cannot reach its database: $(cat "$TMP_ERR")"
+  exit 1
+fi
+
 log "creating user $USER_NAME"
+CREATE_ERR="$(mktemp)"
 gitea admin user create \
   --username "$USER_NAME" \
   --password "$USER_PASS" \
@@ -38,7 +54,15 @@ gitea admin user create \
   --must-change-password=false \
   --access-token \
   --token-name "ci-$RANDOM" \
-  >/dev/null 2>&1 || log "user already exists (continuing)"
+  >/dev/null 2>"$CREATE_ERR" || {
+    # "already exists" is expected on a reused volume; anything else is not.
+    if grep -qi 'already exists\|user already exists' "$CREATE_ERR"; then
+      log "user already exists (continuing)"
+    else
+      log "create failed: $(cat "$CREATE_ERR")"
+    fi
+  }
+rm -f "$CREATE_ERR"
 
 # 2. Clear must-change-password for every account except root. The create above
 #    passes --must-change-password=false, but that flag does not clear the bit on
