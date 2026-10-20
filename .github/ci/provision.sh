@@ -43,7 +43,7 @@ gitea() {
 
 log() { echo "[provision] $*" >&2; }
 TMP_ERR="$(mktemp)"
-trap 'rm -f "$TMP_ERR" "$CREATE_ERR" "$TOKEN_ERR" 2>/dev/null || true' EXIT
+trap 'rm -f "$TMP_ERR" "$CREATE_OUT" "$TOKEN_OUT" 2>/dev/null || true' EXIT
 
 # Prove `docker exec` itself works before blaming the CLI: an exec failure prints
 # to the shell's stderr, not the CLI's, so a bare "cannot reach its database" with
