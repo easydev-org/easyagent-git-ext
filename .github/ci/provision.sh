@@ -164,13 +164,35 @@ esac
 
 # 5. Scratch repository with an initial commit, so the clone has something to
 #    clone and the base branch exists for the MR.
-if ! curl -fsS -o /dev/null -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}"; then
-  log "creating repository ${USER_NAME}/${REPO}"
-  curl -fsS -X POST -H "Authorization: token ${TOKEN}" \
+# `curl -f` returns non-zero on 404, which is exactly the "does it exist" answer
+# we want — but under `set -e` a non-zero anywhere in a compound command can end
+# the script. Capture the status explicitly so the branch is decided by us.
+repo_status="$(curl -s -o /dev/null -w '%{http_code}' \
+  -H "Authorization: token ${TOKEN}" \
+  "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}" || echo 000)"
+
+if [ "${repo_status}" != "200" ]; then
+  log "creating repository ${USER_NAME}/${REPO} (current status ${repo_status})"
+  create_out="$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: token ${TOKEN}" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"${REPO}\",\"auto_init\":true,\"default_branch\":\"main\",\"private\":false}" \
-    "${GITEA_URL}/api/v1/user/repos" >/dev/null
+    "${GITEA_URL}/api/v1/user/repos" || true)"
+  create_code="$(printf '%s' "${create_out}" | tail -1)"
+  log "create returned ${create_code}: $(printf '%s' "${create_out}" | head -1 | cut -c1-200)"
+  if [ "${create_code}" != "201" ]; then
+    log "could not create the scratch repository"
+    exit 1
+  fi
 fi
+
+# The repository must be readable BEFORE the E2E clones it, or the test fails on a
+# clone timeout instead of on this step.
+if [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: token ${TOKEN}" \
+      "${GITEA_URL}/api/v1/repos/${USER_NAME}/${REPO}" || echo 000)" != "200" ]; then
+  log "the scratch repository is not readable"
+  exit 1
+fi
+log "repository ready"
 
 log "ready"
 printf '%s' "${TOKEN}"
