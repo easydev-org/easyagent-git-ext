@@ -25,6 +25,16 @@ services:
       # INSTALL_LOCK skips the web installer; without it /api/v1/version 404s.
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__service__DISABLE_REGISTRATION: "false"
+      # "remote: Verify" on `git push` is Gitea refusing to accept a write from an
+      # account whose address it considers unconfirmed. It appears AFTER the clone
+      # and commit succeed, and it does not say the word "email", so it reads like
+      # a credentials bug. With no mailer the account can never confirm itself, so
+      # confirmation has to be off.
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "false"
+      GITEA__service__ENABLE_NOTIFY_MAIL: "false"
+      GITEA__service__REGISTER_EMAIL_CONFIRM: "false"
+      GITEA__service__REGISTER_MANUAL_CONFIRM: "false"
+      GITEA__cron__ENABLED: "false"
       # No mailer in CI: anything that would wait for an email confirmation would
       # hang forever. Accounts created via the admin CLI are active immediately,
       # and this keeps signup from introducing a second, half-working path.
