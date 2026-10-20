@@ -59,11 +59,20 @@ func shellQuote(s string) string {
 // Only `<real-user>:<token>` authenticates, so the caller must configure `user`
 // on the server entry whenever it needs to PUSH.
 //
-// Security: the secret is never written into the command. `$GIT_TOKEN` is
-// expanded by the shell inside the helper at run time, so `ps` and the job log
-// show the variable, never its value.
+// The credential is sent as a PRE-EMPTIVE Authorization header, not through a
+// credential.helper. A helper is only consulted after the server has issued a 401
+// challenge, and Gitea answers an unauthenticated push with the opaque
+// "remote: Verify" — which is why every helper-based attempt failed while the
+// same username and token worked from a plain `git push` with http.extraHeader.
+//
+// Security: the secret never appears in the command. `$GIT_TOKEN` is expanded by
+// the shell at run time, so `ps` and the job log show the variable, not its value.
 func gitWithToken(cmd, user string) string {
-	userExpr := `"` + strings.ReplaceAll(user, `"`, ``) + `"`
-	helper := `!f() { echo "username=` + userExpr + `"; echo "password=$GIT_TOKEN"; }; f`
-	return `IFS= read -r GIT_TOKEN; git -c credential.helper='` + helper + `' ` + strings.TrimPrefix(cmd, "git ") + `; __rc=$?; unset GIT_TOKEN; exit $__rc`
+	u := strings.ReplaceAll(user, `"`, ``)
+	// base64("user:token") is computed inside the shell, from the variable.
+	return `IFS= read -r GIT_TOKEN; ` +
+		`GIT_BASIC="$(printf '%s:%s' ` + shellQuote(u) + ` "$GIT_TOKEN" | base64 | tr -d '\n')"; ` +
+		`git -c http.extraHeader="Authorization: Basic $GIT_BASIC" ` +
+		strings.TrimPrefix(cmd, "git ") +
+		`; __rc=$?; unset GIT_TOKEN GIT_BASIC; exit $__rc`
 }
