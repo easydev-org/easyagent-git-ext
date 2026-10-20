@@ -207,6 +207,73 @@ func mapErr(err error) error {
 	}
 }
 
+// PullRequest is one merge/pull request, in the shape the tools report.
+type PullRequest struct {
+	Index int64
+	Title string
+	State string
+	Head  string
+	Base  string
+	URL   string
+	// Mergeable reports whether the forge believes the change applies cleanly.
+	Mergeable bool
+}
+
+// OpenPullRequest creates a merge request from head into base.
+//
+// The head branch must already exist on the remote — this call only opens the
+// request, it does not upload commits. The caller pushes first (inside the
+// sandbox), so the forge never sees a request for a branch it does not have.
+func (c *Client) OpenPullRequest(ctx context.Context, base, head, title, body string) (PullRequest, error) {
+	pr, _, err := c.c.CreatePullRequest(c.Owner, c.Repo, gitea.CreatePullRequestOption{
+		Head: head, Base: base, Title: title, Body: body,
+	})
+	if err != nil {
+		return PullRequest{}, mapErr(err)
+	}
+	return toPullRequest(pr), nil
+}
+
+// ListPullRequests lists merge requests in the given state
+// ("open" | "closed" | "all").
+func (c *Client) ListPullRequests(ctx context.Context, state string) ([]PullRequest, error) {
+	var out []PullRequest
+	for page := 1; page <= 200; page++ {
+		prs, _, err := c.c.ListRepoPullRequests(c.Owner, c.Repo, gitea.ListPullRequestsOptions{
+			State:       gitea.StateType(state),
+			ListOptions: gitea.ListOptions{Page: page, PageSize: listPageSize},
+		})
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		for _, pr := range prs {
+			out = append(out, toPullRequest(pr))
+		}
+		if len(prs) < listPageSize {
+			break
+		}
+	}
+	return out, nil
+}
+
+func toPullRequest(pr *gitea.PullRequest) PullRequest {
+	if pr == nil {
+		return PullRequest{}
+	}
+	out := PullRequest{
+		// The SDK calls the PR number `Index` (its JSON key is "number").
+		Index: pr.Index, Title: pr.Title, URL: pr.HTMLURL,
+		State: string(pr.State),
+	}
+	if pr.Head != nil {
+		out.Head = pr.Head.Ref
+	}
+	if pr.Base != nil {
+		out.Base = pr.Base.Ref
+	}
+	return out
+}
+
 // sortRefs orders branches before tags, then by name, so the output is stable.
 func sortRefs(refs []Ref) {
 	// A tiny insertion sort keeps this dependency-free and the slices are short.

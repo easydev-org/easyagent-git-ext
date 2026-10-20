@@ -40,8 +40,13 @@ func Registry(d Deps) map[string]Handler {
 		"git-add":      t.add,
 		"git-commit":   t.commit,
 		"git-pull":     t.pull,
-		"git-push":     t.push,
-		"git-show":     t.show,
+		// `git-push` is REFUSED, not removed: a caller that remembers the name is
+		// told the workflow ("use git-submit-mr") instead of finding it gone.
+		"git-push": t.refusePush,
+		"git-show": t.show,
+		// Review-request workflow (the only way changes reach the remote).
+		"git-submit-mr": t.submitMR,
+		"git-mr-list":   t.listMRs,
 		// Read-only remote tools: they talk to the Gitea/Forgejo API and need NO
 		// sandbox and NO clone, so `path` does not apply to them.
 		"git-remote-ls":   t.remoteLs,

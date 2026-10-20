@@ -269,10 +269,14 @@ tools:
     required_config: [sandboxes, servers]
   - name: git-push
     description: >-
-      Push the repo at `path` to origin.
+      DISABLED. Direct push is refused on purpose: changes reach the remote only
+      through review. Calling this returns an error explaining that you must use
+      `git-submit-mr` instead (it pushes to an `agent/*` head branch and opens a
+      merge request).
     descriptions:
       zh: >-
-        将 `path` 处仓库推送到 origin。
+        已禁用。直接 push 会被拒绝：改动只能通过评审进入远端。调用它会返回错误，
+        提示改用 `git-submit-mr`（推到 `agent/*` 临时分支并开 MR）。
     input_schema:
       type: object
       properties:
@@ -348,6 +352,81 @@ tools:
           descriptions:
             zh: "仓库地址，如 https://git.example.com/owner/repo.git"
       required: [remote]
+    required_config: [servers]
+  - name: git-submit-mr
+    description: >-
+      Submit the current branch for REVIEW: pushes it to a NEW immutable
+      `agent/<session>-<timestamp>` head branch and opens a merge request into
+      `base`. This is the ONLY way changes reach the remote — `git-push` is
+      refused. Commit locally first; an empty difference is rejected.
+    descriptions:
+      zh: >-
+        提交当前分支以供评审：推到一个**新的不可变** `agent/<会话>-<时间戳>` 头分支，
+        并向 `base` 开 MR。这是改动进入远端的**唯一**途径——`git-push` 已被拒绝。
+        请先在本地 commit；没有差异会被拒绝。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (see list-sandboxes). Omit when only one is configured."
+          descriptions:
+            zh: "在哪个沙箱中运行（见 list-sandboxes）。仅配置一个时可省略。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox."
+          descriptions:
+            zh: "沙箱内 git 仓库目录。"
+        base:
+          type: string
+          description: "Target branch (default: the extension's default-branch setting, usually main)."
+          descriptions:
+            zh: "目标分支（默认：扩展的 default-branch 配置，通常是 main）。"
+        title:
+          type: string
+          description: "Merge request title."
+          descriptions:
+            zh: "MR 标题。"
+        body:
+          type: string
+          description: "Merge request description (optional)."
+          descriptions:
+            zh: "MR 描述（可选）。"
+      required: [sandbox, path, title]
+    required_config: [sandboxes, servers]
+  - name: git-mr-list
+    description: >-
+      List merge requests of a repository (default: the one at `path`, state
+      open). Use it to see whether your submission is still open and what a
+      reviewer sees.
+    descriptions:
+      zh: >-
+        列出仓库的 MR（默认：`path` 处那个仓库、状态为 open）。用于确认自己提交的 MR
+        是否仍未合并。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (only needed when `remote` is omitted)."
+          descriptions:
+            zh: "在哪个沙箱中运行（仅在省略 `remote` 时需要）。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (used to derive the remote)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（用于推导 remote）。"
+        remote:
+          type: string
+          description: "Repository URL, if you would rather name it directly."
+          descriptions:
+            zh: "仓库地址（若想直接指定）。"
+        state:
+          type: string
+          description: "\"open\" (default) | \"closed\" | \"all\"."
+          descriptions:
+            zh: "\"open\"（默认）| \"closed\" | \"all\"。"
+      required: []
     required_config: [servers]
   - name: git-remote-show
     description: >-
