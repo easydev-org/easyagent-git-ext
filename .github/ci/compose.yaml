@@ -1,0 +1,60 @@
+# CI services for the gitea-ext E2E.
+#
+# Deliberately SQLite: the point of this file is to give the EXTENSION a real
+# Gitea to talk to, and adding PostgreSQL would only add a second thing that can
+# fail to start. (In the dev cluster the extension was blocked for hours by a
+# postgres Service whose port did not match what it advertised — a class of
+# failure a single-container Gitea does not have.)
+#
+# Runs on the CI runner AND on a developer machine: `docker compose up -d --wait`
+# in either place yields the same forge at http://127.0.0.1:3000.
+services:
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: ci-gitea
+    ports:
+      - "3000:3000"
+      - "2222:22"
+    environment:
+      # Bind everything to the loopback URL the test uses, or Gitea refuses API
+      # requests that do not match ROOT_URL.
+      GITEA__server__ROOT_URL: http://127.0.0.1:3000/
+      GITEA__server__DOMAIN: 127.0.0.1
+      GITEA__server__SSH_DOMAIN: 127.0.0.1
+      GITEA__database__DB_TYPE: sqlite3
+      # INSTALL_LOCK skips the web installer; without it /api/v1/version 404s.
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "false"
+      # No mailer in CI: anything that would wait for an email confirmation would
+      # hang forever. Accounts created via the admin CLI are active immediately,
+      # and this keeps signup from introducing a second, half-working path.
+      GITEA__service__REGISTER_EMAIL_CONFIRM: "false"
+      GITEA__service__ENABLE_NOTIFY_MAIL: "false"
+      GITEA__mailer__ENABLED: "false"
+      GITEA__repository__DEFAULT_BRANCH: main
+      # No gravatar lookups: the runner has no business reaching out to a third
+      # party during tests, and a slow lookup would look like a flaky test.
+      GITEA__picture__DISABLE_GRAVATAR: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/v1/version || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+    volumes:
+      - gitea-data:/data
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: ci-nats
+    ports:
+      - "4222:4222"
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  gitea-data:
