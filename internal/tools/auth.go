@@ -20,5 +20,8 @@ func (t *toolset) authFor(session, tenant, remote string) auth {
 	if !ok || srv.Token == "" {
 		return auth{}
 	}
+	// The username must be a placeholder Gitea RECOGNISES ("x-access-token"), never
+	// the token itself: the token only ever travels on stdin, so putting it in the
+	// command line would leak it into `ps` and the job log.
 	return auth{user: srv.AuthUser(), token: srv.Token}
 }

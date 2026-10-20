@@ -42,8 +42,11 @@ func TestAuthUser(t *testing.T) {
 		s    Server
 		want string
 	}{
-		{Server{Kind: KindGitea}, "token"},
-		{Server{Kind: KindGeneric}, "token"},
+		// No user configured: the PAT placeholder Gitea accepts. A bare "token"
+		// made Gitea look up a user by that name, fail, and answer the git client
+		// with "remote: Verify".
+		{Server{Kind: KindGitea}, "x-access-token"},
+		{Server{Kind: KindGeneric}, "x-access-token"},
 		{Server{Kind: KindGitea, User: "alice"}, "alice"},
 	}
 	for _, c := range cases {
