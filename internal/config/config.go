@@ -266,20 +266,26 @@ func (s Server) AuthUser() string {
 	if s.User != "" {
 		return s.User
 	}
-	// The basic-auth USER for a token. `x-access-token` is the conventional
-	// placeholder for PAT auth and is what Gitea/GitLab/GitHub accept.
+	// The basic-auth USER for a PAT.
 	//
-	// This used to return "token", on the assumption that hosts ignore the
-	// username when the password is a PAT. Gitea does NOT ignore it: it looks the
-	// username up, fails with "user does not exist [uid: 0, name: token]", and
-	// answers the git client with the bare
+	// It has to be the REAL account name. Both placeholders that "everyone knows"
+	// work do NOT work on Gitea: it looks the username up and, when it is not a
+	// real account, logs
+	//
+	//     Failed to verify user: user does not exist [uid: 0, name: x-access-token]
+	//
+	// and hands the git client the barest possible
 	//
 	//     remote: Verify
 	//
-	// which names neither the username nor the account, and reads like an email or
-	// token problem. Hours went into checking token scopes, account activation and
-	// email verification — none of which was the cause.
-	return "x-access-token"
+	// "token" and "x-access-token" were both tried against a live Gitea 1.22 and
+	// both failed; Forgejo happened to accept one, which made the bug look
+	// environment-specific. Configure `user` on the server entry — see
+	// docs: `servers[].user`.
+	//
+	// Returning "" makes the caller fall back to the TOKEN as the username, which
+	// Gitea does accept.
+	return ""
 }
 
 func orDefault(v, def string) string {

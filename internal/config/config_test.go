@@ -42,11 +42,12 @@ func TestAuthUser(t *testing.T) {
 		s    Server
 		want string
 	}{
-		// No user configured: the PAT placeholder Gitea accepts. A bare "token"
-		// made Gitea look up a user by that name, fail, and answer the git client
-		// with "remote: Verify".
-		{Server{Kind: KindGitea}, "x-access-token"},
-		{Server{Kind: KindGeneric}, "x-access-token"},
+		// No user configured: EMPTY, so the caller sends the token as the username
+		// too. Gitea resolves a PAT there; the usual placeholders ("token",
+		// "x-access-token") are looked up as ACCOUNT NAMES and fail, surfacing to
+		// the git client as the opaque "remote: Verify".
+		{Server{Kind: KindGitea}, ""},
+		{Server{Kind: KindGeneric}, ""},
 		{Server{Kind: KindGitea, User: "alice"}, "alice"},
 	}
 	for _, c := range cases {
