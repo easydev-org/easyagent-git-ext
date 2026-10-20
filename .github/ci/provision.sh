@@ -150,17 +150,28 @@ log "user state: $(curl -s -H "Authorization: token ${TOKEN}" "${GITEA_URL}/api/
 # Run it unconditionally: it is a no-op when the account is already fine, and it
 # is the difference between "authenticates" and "can write".
 gitea admin user must-change-password --all --exclude root --unset >/dev/null 2>&1 || true
-case "${VERIFY_EMAIL_VIA_SQL:-}" in
-  sqlite)
-    # Last resort: the ORM column Gitea consults before allowing a write. Only
-    # used when the CLI cannot express it.
-    log "marking email activated via sqlite"
-    docker exec "$GITEA_CONTAINER" \
-      sqlite3 /data/gitea/gitea.db \
-      "update email_address set is_activated=1, valid=true where lower_email like '%${USER_MAIL}%';" \
-      2>&1 | tail -2 || true
-    ;;
-esac
+# Gitea refuses `git push` from an account whose EMAIL is not activated, and
+# answers with the bare "remote: Verify". There is no mailer, so the activation
+# has to be done directly. The SQL is run for real and its effect is READ BACK:
+# an update that silently matched no rows is exactly how this failed before.
+if [ "${VERIFY_EMAIL_VIA_SQL:-}" = "sqlite" ]; then
+  log "activating the account's email"
+  # A SQL FILE keeps the quoting sane: nesting sqlite3 inside `sh -c` inside a
+  # shell function is how the previous attempt silently matched no rows.
+  SQL_FILE="$(mktemp)"
+  cat >"$SQL_FILE" <<SQL
+UPDATE email_address SET is_activated=1, valid=1 WHERE lower_email='${USER_MAIL}';
+UPDATE "user" SET is_active=1, prohibit_login=0 WHERE lower_name='${USER_NAME}';
+SELECT lower_email, is_activated FROM email_address WHERE lower_email='${USER_MAIL}';
+SQL
+  docker cp "$SQL_FILE" "$GITEA_CONTAINER:/tmp/activate.sql" >/dev/null 2>&1 || true
+  act_out="$(docker exec "$GITEA_CONTAINER" sh -c '
+      if ! command -v sqlite3 >/dev/null 2>&1; then echo "no sqlite3 in image"; exit 0; fi
+      sqlite3 /data/gitea/gitea.db < /tmp/activate.sql
+  ' 2>&1)"
+  rm -f "$SQL_FILE"
+  log "email activation: $(printf '%s' "$act_out" | tr '\n' ' ')"
+fi
 
 # 5. Scratch repository with an initial commit, so the clone has something to
 #    clone and the base branch exists for the MR.
