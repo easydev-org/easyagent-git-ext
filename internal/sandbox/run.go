@@ -138,9 +138,24 @@ func (r *Runner) Git(ctx context.Context, path string, timeout time.Duration, ar
 	parts := make([]string, 0, len(args)+3)
 	parts = append(parts, "git", "-C", shellQuote(path))
 	for _, a := range args {
-		parts = append(parts, quoteArg(a))
+		parts = append(parts, quoteIfNeeded(a))
 	}
 	return r.Run(ctx, "", strings.Join(parts, " "), timeout)
+}
+
+// quoteIfNeeded quotes an argument for the sandbox shell.
+//
+// Callers already shell-quote values they interpolate (paths, refs, messages),
+// and quoting those AGAIN produced `”E2E.md”` — a single-quoted empty string
+// followed by the literal text, which git reads as a pathspec of
+// `'E2E.md'` and rejects with "did not match any files". Everything else (flags,
+// plain refs) is left untouched so the command stays readable in logs.
+func quoteIfNeeded(a string) string {
+	// Already single-quoted by the caller: leave it exactly as it is.
+	if len(a) >= 2 && strings.HasPrefix(a, "'") && strings.HasSuffix(a, "'") {
+		return a
+	}
+	return quoteArg(a)
 }
 
 // shellQuote single-quotes a path for the sandbox shell (mvdan-sh POSIX).

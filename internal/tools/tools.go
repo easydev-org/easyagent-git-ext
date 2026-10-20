@@ -259,14 +259,67 @@ func (t *toolset) commit(ctx context.Context, args map[string]any, session, tena
 	if argBool(args, "all", false) {
 		gitArgs = append(gitArgs, "-a")
 	}
-	if a := argStr(args, "author"); a != "" {
-		gitArgs = append(gitArgs, "--author", shellQuote(a))
+	// git refuses to commit without an identity, and a fresh sandbox has none:
+	// the commit then fails with "Author identity unknown" and — worse — the tool
+	// used to report success because it only checked the exit status of `git
+	// rev-parse`, leaving the caller with an unchanged HEAD.
+	//
+	// `-c user.name=… -c user.email=…` sets it for this one command, so the
+	// sandbox's own git config is untouched (an operator may have set it there,
+	// and our value must not overwrite theirs for later manual use).
+	author := argStr(args, "author")
+	name, email := gitIdentity(author)
+	gitArgs = append([]string{
+		"-c", "user.name=" + name,
+		"-c", "user.email=" + email,
+	}, gitArgs...)
+	if author != "" {
+		gitArgs = append(gitArgs, "--author", shellQuote(author))
 	}
+	before, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "HEAD")
 	if _, err := r.Git(ctx, path, 60*time.Second, gitArgs...); err != nil {
 		return extension.ToolResultData{}, err
 	}
+	// Verify the commit actually happened. `git commit` can exit 0 while creating
+	// nothing ("nothing to commit"), and the caller would otherwise be told a
+	// commit was made and then find an unchanged HEAD — which is exactly what made
+	// git-submit-mr refuse with "no commits that main does not already have".
+	after, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "HEAD")
+	if strings.TrimSpace(before) == strings.TrimSpace(after) {
+		return extension.ToolResultData{}, &extension.TypedError{
+			Code:    easybus.ToolResultErrorCodeInvalidArgument,
+			Message: "nothing was committed: no staged changes. Run git-add (or pass all=true) before committing.",
+		}
+	}
 	hash, _ := r.Git(ctx, path, 30*time.Second, "rev-parse", "--short", "HEAD")
 	return extension.ToolResultData{Content: i18n.T(t.locale(session, tenant), i18n.MsgCommitted, i18n.Params{"hash": strings.TrimSpace(hash)}), Data: map[string]any{"hash": strings.TrimSpace(hash)}}, nil
+}
+
+// gitIdentity derives the committer name/email.
+//
+// An explicit `author` ("Name <email>") supplies both; otherwise the extension's
+// own identity is used, so a commit always names who made it. This is what the
+// review workflow needs: a merge request whose commits have no author is not
+// reviewable.
+func gitIdentity(author string) (string, string) {
+	const defName, defEmail = "easyagent", "agent@easyagent.local"
+	a := strings.TrimSpace(author)
+	if a == "" {
+		return defName, defEmail
+	}
+	// "Name <email>"
+	if i := strings.LastIndex(a, "<"); i >= 0 {
+		name := strings.TrimSpace(a[:i])
+		mail := strings.TrimSuffix(strings.TrimSpace(a[i+1:]), ">")
+		if name == "" {
+			name = defName
+		}
+		if mail == "" {
+			mail = defEmail
+		}
+		return name, mail
+	}
+	return a, defEmail
 }
 
 func (t *toolset) pull(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
