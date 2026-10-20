@@ -194,5 +194,18 @@ if [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: token ${TOKEN}
 fi
 log "repository ready"
 
-log "ready"
-printf '%s' "${TOKEN}"
+# Hand the token back through a FILE, not stdout.
+#
+# Printing it on stdout works under `t=$(script)` but is fragile: any line that
+# reaches the runner's stdout is parsed for workflow commands, and a bare token
+# is rejected with "Invalid format '<token>'" — which looks like a leak and stops
+# the job. A file cannot be mistaken for log output.
+#   $1 = optional path to write the token to (default: a temp file we report).
+if [ -n "${1:-}" ]; then
+  printf '%s' "${TOKEN}" >"$1"
+  chmod 600 "$1"
+  log "token written to $1"
+else
+  log "TOKEN_PATH is not set; pass a path as the first argument"
+  exit 1
+fi

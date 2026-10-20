@@ -78,10 +78,21 @@ jobs:
           VERIFY_EMAIL_VIA_SQL: sqlite
         run: |
           set -euo pipefail
-          token=$(.github/ci/provision.sh)
-          # Mask so a token never reaches the logs, and export for later steps.
+          # The token comes back in a FILE: a bare value on stdout is parsed by
+          # the runner as a workflow command and rejected with
+          # "Invalid format '<token>'", which reads like a leak but is a
+          # protocol collision.
+          .github/ci/provision.sh "$RUNNER_TEMP/gitea-token"
+          token="$(tr -d '[:space:]' <"$RUNNER_TEMP/gitea-token")"
+          if [ -z "$token" ]; then
+            echo "provision produced no token"; exit 1
+          fi
           echo "::add-mask::$token"
-          echo "GITEA_TOKEN=$token" >> "$GITHUB_OUTPUT"
+          {
+            echo "GITEA_TOKEN<<CI_EOF"
+            echo "$token"
+            echo "CI_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: build extension
         run: go build -o /tmp/gitea-ext ./cmd/gitea-ext
