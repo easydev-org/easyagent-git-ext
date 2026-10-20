@@ -256,6 +256,127 @@ func (c *Client) ListPullRequests(ctx context.Context, state string) ([]PullRequ
 	return out, nil
 }
 
+// GetPullRequest returns one merge request.
+func (c *Client) GetPullRequest(ctx context.Context, index int64) (PullRequest, error) {
+	pr, _, err := c.c.GetPullRequest(c.Owner, c.Repo, index)
+	if err != nil {
+		return PullRequest{}, mapErr(err)
+	}
+	return toPullRequest(pr), nil
+}
+
+// Comment adds a comment to a merge request (or any issue).
+//
+// Gitea models an MR as an issue with a patch attached, so a review comment goes
+// through the issue-comment endpoint.
+func (c *Client) Comment(ctx context.Context, index int64, body string) (Comment, error) {
+	if strings.TrimSpace(body) == "" {
+		return Comment{}, fmt.Errorf("body is required")
+	}
+	cm, _, err := c.c.CreateIssueComment(c.Owner, c.Repo, index, gitea.CreateIssueCommentOption{Body: body})
+	if err != nil {
+		return Comment{}, mapErr(err)
+	}
+	return toComment(cm), nil
+}
+
+// ListComments returns the comments of a merge request in posting order.
+func (c *Client) ListComments(ctx context.Context, index int64) ([]Comment, error) {
+	var out []Comment
+	for page := 1; page <= 200; page++ {
+		cms, _, err := c.c.ListIssueComments(c.Owner, c.Repo, index, gitea.ListIssueCommentOptions{
+			ListOptions: gitea.ListOptions{Page: page, PageSize: listPageSize},
+		})
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		for _, cm := range cms {
+			out = append(out, toComment(cm))
+		}
+		if len(cms) < listPageSize {
+			break
+		}
+	}
+	return out, nil
+}
+
+// ClosePullRequest closes a merge request WITHOUT merging it.
+//
+// Closing is deliberately separate from merging: abandoning a submission and
+// landing one are different decisions, and collapsing them would let a caller
+// close by accident while trying to merge.
+func (c *Client) ClosePullRequest(ctx context.Context, index int64) (PullRequest, error) {
+	closed := gitea.StateClosed
+	pr, _, err := c.c.EditPullRequest(c.Owner, c.Repo, index, gitea.EditPullRequestOption{
+		State: &closed,
+	})
+	if err != nil {
+		return PullRequest{}, mapErr(err)
+	}
+	return toPullRequest(pr), nil
+}
+
+// ReopenPullRequest reopens a previously closed merge request.
+func (c *Client) ReopenPullRequest(ctx context.Context, index int64) (PullRequest, error) {
+	open := gitea.StateOpen
+	pr, _, err := c.c.EditPullRequest(c.Owner, c.Repo, index, gitea.EditPullRequestOption{
+		State: &open,
+	})
+	if err != nil {
+		return PullRequest{}, mapErr(err)
+	}
+	return toPullRequest(pr), nil
+}
+
+// MergePullRequest merges a merge request.
+//
+// `style` is the forge's merge style (merge | rebase | rebase-merge | squash |
+// fast-forward-only); empty uses the forge's default. `deleteBranch` removes the
+// head branch afterwards, which is what keeps a repository from filling up with
+// one `agent/*` branch per submission.
+func (c *Client) MergePullRequest(ctx context.Context, index int64, style, title, message string, deleteBranch bool) (PullRequest, error) {
+	opt := gitea.MergePullRequestOption{
+		Title: title, Message: message,
+	}
+	if style != "" {
+		opt.Style = gitea.MergeStyle(style)
+	}
+	if deleteBranch {
+		del := true
+		opt.DeleteBranchAfterMerge = &del
+	}
+	if _, _, err := c.c.MergePullRequest(c.Owner, c.Repo, index, opt); err != nil {
+		return PullRequest{}, mapErr(err)
+	}
+	// The merge endpoint returns a bare boolean, so read the MR back to report
+	// the resulting state (merged vs merely closed) instead of guessing.
+	pr, _, err := c.c.GetPullRequest(c.Owner, c.Repo, index)
+	if err != nil {
+		// The merge itself succeeded; failing to re-read must not turn that into
+		// an error the caller would retry.
+		return PullRequest{Index: index, State: "merged"}, nil
+	}
+	return toPullRequest(pr), nil
+}
+
+// Comment is one comment on a merge request.
+type Comment struct {
+	ID     int64
+	Body   string
+	Author string
+}
+
+func toComment(cm *gitea.Comment) Comment {
+	if cm == nil {
+		return Comment{}
+	}
+	out := Comment{ID: cm.ID, Body: cm.Body}
+	if cm.Poster != nil {
+		out.Author = cm.Poster.UserName
+	}
+	return out
+}
+
 func toPullRequest(pr *gitea.PullRequest) PullRequest {
 	if pr == nil {
 		return PullRequest{}

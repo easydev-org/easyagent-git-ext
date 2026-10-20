@@ -428,6 +428,169 @@ tools:
             zh: "\"open\"（默认）| \"closed\" | \"all\"。"
       required: []
     required_config: [servers]
+  - name: git-mr-show
+    description: >-
+      Show ONE merge request with its comment thread. Read it after a reviewer
+      comments, so a follow-up submission answers what was actually asked.
+    descriptions:
+      zh: >-
+        查看单个 MR 及其评论线程。收到评审意见后先读它，再提交补充改动，避免答非所问。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (only needed when `remote` is omitted)."
+          descriptions:
+            zh: "在哪个沙箱中运行（仅在省略 `remote` 时需要）。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (used to derive the remote)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（用于推导 remote）。"
+        remote:
+          type: string
+          description: "Repository URL, if you would rather name it directly."
+          descriptions:
+            zh: "仓库地址（若想直接指定）。"
+        index:
+          type: integer
+          description: "The merge request number."
+          descriptions:
+            zh: "MR 编号。"
+      required: [index]
+    required_config: [servers]
+  - name: git-mr-comment
+    description: >-
+      Post a comment on a merge request — answer a reviewer, or explain a choice.
+    descriptions:
+      zh: >-
+        在 MR 上发表评论：回复评审意见或说明取舍。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (only needed when `remote` is omitted)."
+          descriptions:
+            zh: "在哪个沙箱中运行（仅在省略 `remote` 时需要）。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (used to derive the remote)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（用于推导 remote）。"
+        remote:
+          type: string
+          description: "Repository URL, if you would rather name it directly."
+          descriptions:
+            zh: "仓库地址（若想直接指定）。"
+        index:
+          type: integer
+          description: "The merge request number."
+          descriptions:
+            zh: "MR 编号。"
+        body:
+          type: string
+          description: "Comment text (Markdown)."
+          descriptions:
+            zh: "评论内容（Markdown）。"
+      required: [index, body]
+    required_config: [servers]
+  - name: git-mr-close
+    description: >-
+      Close a merge request WITHOUT merging (abandon a superseded submission), or
+      reopen it with `reopen: true`.
+    descriptions:
+      zh: >-
+        关闭 MR（不合并），用于放弃已被取代的提交；`reopen: true` 可重新打开。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (only needed when `remote` is omitted)."
+          descriptions:
+            zh: "在哪个沙箱中运行（仅在省略 `remote` 时需要）。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (used to derive the remote)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（用于推导 remote）。"
+        remote:
+          type: string
+          description: "Repository URL, if you would rather name it directly."
+          descriptions:
+            zh: "仓库地址（若想直接指定）。"
+        index:
+          type: integer
+          description: "The merge request number."
+          descriptions:
+            zh: "MR 编号。"
+        reopen:
+          type: boolean
+          description: "Reopen the MR instead of closing it."
+          descriptions:
+            zh: "改为重新打开该 MR。"
+      required: [index]
+    required_config: [servers]
+  - name: git-mr-merge
+    description: >-
+      Merge a merge request into its base branch. This is the ONLY tool that
+      changes the base branch: `git-push` is refused, so landing code is an
+      explicit, reviewable act. The agent head branch is deleted afterwards
+      unless `delete-branch: false`.
+    descriptions:
+      zh: >-
+        把 MR 合并进目标分支。这是**唯一**能改动目标分支的工具：`git-push` 已被拒绝，
+        因此合入代码是一个显式、可评审的动作。默认合并后删除 agent 头分支，
+        `delete-branch: false` 可保留。
+    input_schema:
+      type: object
+      properties:
+        sandbox:
+          type: string
+          description: "Which sandbox to run in (only needed when `remote` is omitted)."
+          descriptions:
+            zh: "在哪个沙箱中运行（仅在省略 `remote` 时需要）。"
+        path:
+          type: string
+          description: "The git repository directory in the sandbox (used to derive the remote)."
+          descriptions:
+            zh: "沙箱内 git 仓库目录（用于推导 remote）。"
+        remote:
+          type: string
+          description: "Repository URL, if you would rather name it directly."
+          descriptions:
+            zh: "仓库地址（若想直接指定）。"
+        index:
+          type: integer
+          description: "The merge request number."
+          descriptions:
+            zh: "MR 编号。"
+        style:
+          type: string
+          description: >-
+            merge (default from the repo) | rebase | rebase-merge | squash |
+            fast-forward-only.
+          descriptions:
+            zh: "merge（仓库默认）| rebase | rebase-merge | squash | fast-forward-only。"
+        title:
+          type: string
+          description: "Merge commit title (optional)."
+          descriptions:
+            zh: "合并提交标题（可选）。"
+        message:
+          type: string
+          description: "Merge commit message (optional)."
+          descriptions:
+            zh: "合并提交信息（可选）。"
+        delete-branch:
+          type: boolean
+          description: "Delete the head branch after merging (default true)."
+          descriptions:
+            zh: "合并后删除头分支（默认 true）。"
+      required: [index]
+    required_config: [servers]
   - name: git-remote-show
     description: >-
       Print ONE file from a remote repository WITHOUT cloning it, straight from
