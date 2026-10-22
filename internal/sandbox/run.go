@@ -71,6 +71,15 @@ func (r *Runner) RunSecret(ctx context.Context, workdir, command, secret string,
 // returns its output.
 func (r *Runner) wait(ctx context.Context, jobID string, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
+	// Relay output while we wait.
+	//
+	// `wait` polls JobWait, which tells us nothing until the command ends — so a
+	// `git clone` of a large repo showed "running" for a minute and then all the
+	// output at once. A WatchJob stream runs alongside purely to forward lines;
+	// the poll loop below remains the authority on WHEN the command finished, so
+	// nothing about the wait semantics changes.
+	stopRelay := r.relay(ctx, jobID)
+	defer stopRelay()
 	for {
 		slice := time.Until(deadline)
 		if slice > 600*time.Second {
@@ -104,6 +113,37 @@ func (r *Runner) RemoteURL(ctx context.Context, path string) string {
 		return ""
 	}
 	return strings.TrimSpace(out)
+}
+
+// relay forwards a running job's output to the console until the job ends.
+//
+// Best-effort by design: if the worker cannot be watched, the command still runs
+// and its result is unaffected — only the live view is lost.
+func (r *Runner) relay(ctx context.Context, jobID string) func() {
+	prog := NewProgress()
+	relayCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		defer prog.Flush(ctx)
+		stream, err := r.cl.WatchJob(relayCtx, &workerv1.WatchJobRequest{JobId: jobID})
+		if err != nil {
+			return
+		}
+		defer stream.Close()
+		for {
+			msg, rerr := stream.Receive()
+			if rerr != nil {
+				return
+			}
+			if out := msg.GetOutput(); out != "" {
+				prog.Add(relayCtx, out)
+			}
+			if d := msg.GetDone(); d != nil {
+				prog.Flush(relayCtx)
+				return
+			}
+		}
+	}()
+	return func() { cancel() }
 }
 
 // output reads the full job output.
