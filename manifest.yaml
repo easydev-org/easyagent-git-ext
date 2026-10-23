@@ -1,0 +1,537 @@
+id: github
+version: 1.0
+lifecycle: [deleted]
+
+# github-ext: work on GitHub repositories and their CI with NO local sandbox.
+#
+# The whole extension exists to answer one question: can a tool change a repository without a
+# checkout? The answer is a staging area plus exactly one way out — a pull request.
+#
+# Reading works anonymously on a public repository. Writing needs a token.
+
+config:
+  - name: token
+    type: secret
+    description: >-
+      GitHub personal access token. Not needed to READ a public repository; needed for
+      everything that changes one.
+    descriptions:
+      zh: >-
+        GitHub 个人访问令牌。读取公开仓库不需要；修改仓库时必须。
+    required: false
+
+  - name: api-url
+    type: string
+    description: >-
+      API root for GitHub Enterprise, e.g. https://github.example.com/api/v3. Leave empty
+      for github.com.
+    descriptions:
+      zh: GitHub Enterprise 的 API 地址，例如 https://github.example.com/api/v3。github.com 留空。
+    required: false
+
+permissions:
+  - key: pr.create
+    label: Open pull requests
+    descriptions:
+      zh: 创建拉取请求
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: pr.merge
+    # destructive, not write: merging changes the base branch, which is what everything else
+    # is built on. Opening a PR is reversible with one click; merging is not.
+    label: Merge pull requests
+    descriptions:
+      zh: 合并拉取请求
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: pr.close
+    label: Close pull requests without merging
+    descriptions:
+      zh: 关闭拉取请求（不合并）
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: repo.create
+    label: Create repositories
+    descriptions:
+      zh: 创建仓库
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: repo.delete
+    label: Delete repositories
+    descriptions:
+      zh: 删除仓库
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+tools:
+  # ── reading ──────────────────────────────────────────────────────────────────
+  - name: gh-info
+    description: >-
+      Repository metadata: default branch, description, language, licence, stars. Works
+      without a token on a public repository.
+    descriptions:
+      zh: 仓库元信息：默认分支、描述、语言、许可证、star 数。公开仓库无需令牌。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: Repository as owner/name (or a full URL).
+          descriptions:
+            zh: 仓库（owner/name 或完整 URL）。
+      required: [repo]
+
+  - name: gh-tree
+    description: >-
+      List every file path at a ref in one call. Files only — directories add no information
+      a caller does not already have from the paths.
+    descriptions:
+      zh: 一次调用列出某个 ref 下的全部文件路径。只列文件——目录不会带来额外信息。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        ref:
+          type: string
+          description: Branch, tag or commit. Empty = the default branch.
+          descriptions:
+            zh: 分支、标签或提交。留空表示默认分支。
+      required: [repo]
+
+  - name: gh-read
+    description: >-
+      Read one file, with line numbers. The numbers are for reading a patch target, not part
+      of the content.
+    descriptions:
+      zh: 读取单个文件，带行号。行号用于定位要修改的位置，不属于文件内容。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        path:
+          type: string
+          descriptions:
+            zh: 文件路径。
+        ref:
+          type: string
+          descriptions:
+            zh: 分支/标签/提交。
+      required: [repo, path]
+
+  # ── account ──────────────────────────────────────────────────────────────────
+  - name: gh-whoami
+    description: >-
+      The token's identity and what it may do: classic scopes, or a note that it is a
+      fine-grained token (whose permissions are per-repository and not reported as scopes).
+      Also reports the remaining request budget.
+    descriptions:
+      zh: 令牌身份与权限：经典令牌的 scope，或提示这是细粒度令牌（其权限按仓库划分，不体现为 scope）。同时报告剩余请求配额。
+    input_schema:
+      type: object
+      properties: {}
+
+  - name: gh-orgs
+    description: Organizations the caller belongs to.
+    descriptions:
+      zh: 当前身份所属的组织。
+    input_schema:
+      type: object
+      properties: {}
+
+  - name: gh-repos
+    description: >-
+      Repositories the caller can see. Pass `org` for one organization's repositories,
+      otherwise everything the caller can reach.
+    descriptions:
+      zh: 当前身份可见的仓库。传 `org` 则列出该组织的仓库，否则列出全部可达仓库。
+    input_schema:
+      type: object
+      properties:
+        org:
+          type: string
+          descriptions:
+            zh: 组织名。
+        type:
+          type: string
+          description: all | public | private | forks | sources | member
+          descriptions:
+            zh: all | public | private | forks | sources | member
+        visibility:
+          type: string
+          description: all | public | private (when no org is given)
+          descriptions:
+            zh: all | public | private（未指定组织时）
+
+  - name: gh-releases
+    description: >-
+      Releases for a repository, newest first. With `tag`, that one release including its
+      notes and assets.
+    descriptions:
+      zh: 仓库的 release 列表，最新的在前。传 `tag` 则返回该 release 的详情（含说明与附件）。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          descriptions:
+            zh: 标签名。
+        limit:
+          type: integer
+          descriptions:
+            zh: 最多返回条数。
+      required: [repo]
+
+  - name: gh-packages
+    description: >-
+      An organization's packages. Without `package`, lists them; with it, lists that
+      package's version tags.
+    descriptions:
+      zh: 组织的软件包。不传 `package` 列出全部；传则列出该包的版本标签。
+    input_schema:
+      type: object
+      properties:
+        org:
+          type: string
+          descriptions:
+            zh: 组织名。
+        kind:
+          type: string
+          description: container | npm | maven | rubygems | nuget (default container)
+          descriptions:
+            zh: container | npm | maven | rubygems | nuget（默认 container）
+        package:
+          type: string
+          descriptions:
+            zh: 包名。
+      required: [org]
+
+  # ── repository administration ────────────────────────────────────────────────
+  - name: gh-repo-create
+    description: >-
+      Create a repository, under `org` or under the authenticated user. `auto_init` creates
+      an initial commit, which is the difference between a repository that can be pushed to
+      immediately and one that needs a first push to exist at all.
+    descriptions:
+      zh: 创建仓库（`org` 下或当前用户名下）。`auto_init` 会创建首个提交——这决定了仓库能否立刻推送。
+    input_schema:
+      type: object
+      properties:
+        name:
+          type: string
+          descriptions:
+            zh: 仓库名。
+        org:
+          type: string
+          descriptions:
+            zh: 组织名（可选）。
+        description:
+          type: string
+          descriptions:
+            zh: 描述。
+        private:
+          type: boolean
+          descriptions:
+            zh: 是否私有。
+        auto_init:
+          type: boolean
+          descriptions:
+            zh: 是否创建初始提交。
+      required: [name]
+    requires: [repo.create]
+
+  - name: gh-repo-rename
+    description: >-
+      Rename a repository. GitHub redirects the old name, but anything caching the slug should
+      refresh it — the new name is returned.
+    descriptions:
+      zh: 重命名仓库。GitHub 会重定向旧名，但缓存了 slug 的地方应更新——工具会返回新名称。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 当前仓库。
+        name:
+          type: string
+          descriptions:
+            zh: 新名称。
+      required: [repo, name]
+
+  - name: gh-repo-delete
+    description: >-
+      Delete a repository. IRREVERSIBLE. Requires `confirm` to equal the repository slug, so a
+      wrong slug cannot delete the wrong repository.
+    descriptions:
+      zh: 删除仓库。不可撤销。要求 `confirm` 等于仓库全名，避免笔误删错仓库。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 要删除的仓库。
+        confirm:
+          type: string
+          description: Must equal `repo`, or the call is refused.
+          descriptions:
+            zh: 必须与 `repo` 完全相同，否则拒绝执行。
+      required: [repo, confirm]
+    requires: [repo.delete]
+
+  # ── staging area ─────────────────────────────────────────────────────────────
+  - name: gh-stage-patch
+    description: >-
+      Edit the staging area with a patch. THIS IS THE ONLY EDITING TOOL — there is no
+      separate write/delete/move set, because one way to edit means one way to get it wrong.
+      Format: "*** Begin Patch" / "*** Add File: path" (+lines) / "*** Update File: path"
+      (@@ anchor, then ' ' context, '-' removed, '+' added) / "*** Delete File: path" /
+      "*** End Patch". Applied whole or not at all: a failing hunk leaves the stage untouched.
+    descriptions:
+      zh: >-
+        用补丁修改暂存区。这是唯一的编辑工具——没有单独的写入/删除/移动，因为只有一种改法才只有一种出错方式。
+        格式见英文说明：Begin Patch 与 End Patch 之间，每个文件以 Add File、Update File 或 Delete File 开头；
+        Update 的每个 hunk 以 @@ 锚点开始，随后是空格前缀的上下文、减号前缀的删除、加号前缀的新增。
+        整份生效或整份失败：任一 hunk 失败则暂存区不变。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        patch:
+          type: string
+          descriptions:
+            zh: 补丁文本。
+        base:
+          type: string
+          description: Branch to stage against. Empty = the default branch.
+          descriptions:
+            zh: 基于哪个分支修改。留空表示默认分支。
+      required: [repo, patch]
+
+  - name: gh-stage-status
+    description: Which files the staging area would change.
+    descriptions:
+      zh: 暂存区会改动哪些文件。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+      required: [repo]
+
+  - name: gh-stage-diff
+    description: The staged change as a diff. Read-only, and worth checking before opening a PR.
+    descriptions:
+      zh: 暂存改动对应的 diff。只读，开 PR 前值得先看一遍。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+      required: [repo]
+
+  - name: gh-stage-reset
+    description: Discard staged edits — one path, or everything when `path` is empty.
+    descriptions:
+      zh: 丢弃暂存改动——指定 `path` 丢弃单个文件，留空丢弃全部。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        path:
+          type: string
+          descriptions:
+            zh: 文件路径。
+      required: [repo]
+
+  # ── the only way out ────────────────────────────────────────────────────────
+  - name: gh-pr-create
+    description: >-
+      Turn the staging area into a pull request: one commit on a fresh branch `pr/<id>`, then
+      the PR. THIS IS THE ONLY WAY A CHANGE REACHES GITHUB — there is no commit tool and no
+      push tool. The branch name is new every time, so a second change never rewrites a branch
+      somebody is already reviewing.
+    descriptions:
+      zh: 把暂存区变成拉取请求：在新的 `pr/<id>` 分支上生成一个提交，然后开 PR。这是改动进入 GitHub 的唯一途径——没有提交工具，也没有推送工具。分支名每次都不同，第二次改动不会覆盖正在评审的分支。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        title:
+          type: string
+          descriptions:
+            zh: PR 标题（同时作为提交信息）。
+        body:
+          type: string
+          descriptions:
+            zh: PR 描述。
+        base:
+          type: string
+          description: Branch to merge into. Empty = the repository's default branch.
+          descriptions:
+            zh: 合入的目标分支。留空表示仓库默认分支。
+      required: [repo, title]
+    requires: [pr.create]
+
+  - name: gh-pr-list
+    description: Pull requests, newest first.
+    descriptions:
+      zh: 拉取请求列表，最新的在前。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        state:
+          type: string
+          description: open | closed | all (default open)
+          descriptions:
+            zh: open | closed | all（默认 open）
+      required: [repo]
+
+  - name: gh-pr-show
+    description: One pull request, including whether it can be merged.
+    descriptions:
+      zh: 单个拉取请求，含是否可合并。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-pr-checks
+    description: >-
+      CI status for a pull request: one word (success/pending/failure/none) plus every check
+      run and status context. Considers BOTH the check-runs and the older commit-status APIs,
+      because a repository may use either.
+    descriptions:
+      zh: 拉取请求的 CI 状态：一个总结（success/pending/failure/none），外加每个检查与状态上下文。同时考虑 check-runs 与较旧的 commit-status 两套 API，因为仓库可能用任一种。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-pr-merge
+    description: >-
+      Merge a pull request. A refused merge (a conflict, an unmet required check) is reported
+      as an error rather than a false success.
+    descriptions:
+      zh: 合并拉取请求。被拒绝的合并（冲突、必需的检查未通过）会作为错误报告，而不是假装成功。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+        method:
+          type: string
+          description: merge | squash | rebase (default merge)
+          descriptions:
+            zh: merge | squash | rebase（默认 merge）
+        title:
+          type: string
+          descriptions:
+            zh: 合并提交标题。
+        message:
+          type: string
+          descriptions:
+            zh: 合并提交信息。
+      required: [repo, number]
+    requires: [pr.merge]
+
+  - name: gh-pr-close
+    description: Close a pull request without merging.
+    descriptions:
+      zh: 关闭拉取请求（不合并）。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+    requires: [pr.close]

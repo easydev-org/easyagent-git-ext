@@ -1,4 +1,4 @@
-// Package github wraps google/go-github with this extension's own vocabulary.
+// Package ghclient wraps google/go-github with this extension's own vocabulary.
 //
 // WHY go-github rather than a hand-written client. The first version of this file was
 // hand-written, on the reasoning that only a dozen endpoints were needed. That reasoning was
@@ -18,7 +18,7 @@
 // The wrapper exists so the TOOL layer sees stable, small types (a Release, a PullRequest) and
 // is not exposed to go-github's major-version churn — that project ships a new major almost
 // monthly.
-package github
+package ghclient
 
 import (
 	"context"
