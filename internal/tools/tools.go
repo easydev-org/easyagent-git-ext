@@ -42,6 +42,15 @@ const (
 	PermRepoCreate = "repo.create"
 	// PermRepoDelete deletes a repository. Destructive and irreversible.
 	PermRepoDelete = "repo.delete"
+	// PermTagCreate creates tags — the event a downstream subscription reacts to.
+	PermTagCreate = "tag.create"
+	// PermTagDelete deletes a tag. Destructive: a released version disappears with it.
+	PermTagDelete = "tag.delete"
+	// PermReleaseCreate publishes releases.
+	PermReleaseCreate = "release.create"
+	// PermReleaseDelete removes a published release. Destructive: consumers may already have
+	// acted on the announcement.
+	PermReleaseDelete = "release.delete"
 )
 
 // requireMap names the permissions each tool needs.
@@ -50,11 +59,15 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	"gh-pr-create":   {PermPRCreate},
-	"gh-pr-merge":    {PermPRMerge},
-	"gh-pr-close":    {PermPRClose},
-	"gh-repo-create": {PermRepoCreate},
-	"gh-repo-delete": {PermRepoDelete},
+	"gh-pr-create":      {PermPRCreate},
+	"gh-pr-merge":       {PermPRMerge},
+	"gh-pr-close":       {PermPRClose},
+	"gh-repo-create":    {PermRepoCreate},
+	"gh-repo-delete":    {PermRepoDelete},
+	"gh-tag-create":     {PermTagCreate},
+	"gh-tag-delete":     {PermTagDelete},
+	"gh-release-create": {PermReleaseCreate},
+	"gh-release-delete": {PermReleaseDelete},
 }
 
 // RequireMap returns a copy so a caller cannot mutate the shared table.
@@ -81,6 +94,13 @@ func Registry(d Deps) map[string]Handler {
 		"gh-repos":    t.repos,
 		"gh-releases": t.releases,
 		"gh-packages": t.packages,
+
+		// Publishing. gh-tag-create is the event a downstream subscription waits for.
+		"gh-tag-create":     t.tagCreate,
+		"gh-tag-list":       t.tagList,
+		"gh-tag-delete":     t.tagDelete,
+		"gh-release-create": t.releaseCreate,
+		"gh-release-delete": t.releaseDelete,
 
 		// Repository administration.
 		"gh-repo-create": t.repoCreate,

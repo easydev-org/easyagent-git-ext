@@ -97,6 +97,62 @@ permissions:
         descriptions:
           zh: 仓库（owner/name），或用 * 表示全部。
 
+  - key: tag.create
+    # write, and the event that STARTS a downstream chain: a tag is what a consumer
+    # subscribes to, so creating one tells every follower that a version exists.
+    label: Create tags (announces a version)
+    descriptions:
+      zh: 创建标签（宣告一个版本）
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: tag.delete
+    # destructive: the version disappears for everyone, including anyone already following it.
+    label: Delete tags
+    descriptions:
+      zh: 删除标签
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: release.create
+    label: Publish releases
+    descriptions:
+      zh: 发布 release
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
+  - key: release.delete
+    # destructive: a published release may already have been acted on downstream.
+    label: Delete releases
+    descriptions:
+      zh: 删除 release
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: Repository as owner/name, or * for all.
+        descriptions:
+          zh: 仓库（owner/name），或用 * 表示全部。
+
 tools:
   # ── reading ──────────────────────────────────────────────────────────────────
   - name: gh-info
@@ -250,6 +306,149 @@ tools:
       required: [org]
 
   # ── repository administration ────────────────────────────────────────────────
+  - name: gh-tag-create
+    description: >-
+      Create an ANNOTATED tag at a commit. `message` is required: an annotated tag is a
+      published event with a description, and a release is built on one — a bare ref would be a
+      version marker whose meaning lives only in whoever made it. Creating a tag is what a
+      downstream channel subscription reacts to.
+    descriptions:
+      zh: >-
+        在某个提交上创建附注标签。`message` 必填：附注标签是带说明的发布事件，release 也建立在它之上——
+        裸 ref 只是一个含义仅存在于创建者心里的版本标记。打标签正是下游频道订阅所响应的事件。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          description: Tag name, e.g. v1.2.3.
+          descriptions:
+            zh: 标签名，例如 v1.2.3。
+        ref:
+          type: string
+          description: Branch, tag or commit to tag. Empty = the default branch.
+          descriptions:
+            zh: 要打标签的分支、标签或提交。留空表示默认分支。
+        message:
+          type: string
+          description: Required. The tag's description.
+          descriptions:
+            zh: 必填。标签的说明。
+      required: [repo, tag, message]
+    requires: [tag.create]
+
+  - name: gh-tag-list
+    description: Tags with the commit each points at.
+    descriptions:
+      zh: 标签列表，含各自指向的提交。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+      required: [repo]
+
+  - name: gh-tag-delete
+    description: >-
+      Delete a tag. IRREVERSIBLE, and the version disappears for everyone already following
+      it.
+    descriptions:
+      zh: 删除标签。不可撤销，且已关注该版本的所有人都会失去它。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          descriptions:
+            zh: 标签名。
+      required: [repo, tag]
+    requires: [tag.delete]
+
+  - name: gh-release-create
+    description: >-
+      Publish a release. `body` is required: a release announces a version, and consumers need
+      to know what changed. Creates the tag at `ref` if it does not exist yet.
+    descriptions:
+      zh: >-
+        发布 release。`body` 必填：release 是在宣告一个版本，消费者需要知道变了什么。若标签不存在，会在 `ref`
+        处创建。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          descriptions:
+            zh: 标签名。
+        ref:
+          type: string
+          description: Commit or branch the tag is created at, when it does not exist yet.
+          descriptions:
+            zh: 标签不存在时，在哪个提交或分支上创建。
+        name:
+          type: string
+          description: Release title. Defaults to the tag name.
+          descriptions:
+            zh: release 标题。默认与标签名相同。
+        body:
+          type: string
+          description: Required. The release notes.
+          descriptions:
+            zh: 必填。发布说明。
+        draft:
+          type: boolean
+          description: Save as a draft instead of publishing.
+          descriptions:
+            zh: 保存为草稿而不发布。
+        prerelease:
+          type: boolean
+          description: Mark as a prerelease.
+          descriptions:
+            zh: 标记为预发布。
+      required: [repo, tag, body]
+    requires: [release.create]
+
+  - name: gh-release-delete
+    description: >-
+      Delete a published release. The tag and the release are SEPARATE objects on GitHub, so
+      deleting a tag leaves the release behind. With `with_tag`, both go — that needs
+      tag.delete as well.
+    descriptions:
+      zh: >-
+        删除已发布的 release。在 GitHub 上标签和 release 是两个独立对象，所以只删标签会留下 release。
+        传 `with_tag` 则两者一起删除——这还需要 tag.delete 权限。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          descriptions:
+            zh: release 所在的标签名。
+        with_tag:
+          type: boolean
+          description: Also delete the tag. Requires tag.delete.
+          descriptions:
+            zh: 同时删除标签。需要 tag.delete 权限。
+      required: [repo, tag]
+    requires: [release.delete]
+
   - name: gh-repo-create
     description: >-
       Create a repository, under `org` or under the authenticated user. `auto_init` creates

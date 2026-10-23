@@ -233,3 +233,12 @@ func (t *toolset) repoDelete(ctx context.Context, args map[string]any, session, 
 	}
 	return extension.ToolResultData{Content: "deleted " + repo}, nil
 }
+
+// shortSHA abbreviates a commit sha for display. Tool output is read by a model and a human;
+// both recognise 7 characters and neither benefits from 40.
+func shortSHA(s string) string {
+	if len(s) > 7 {
+		return s[:7]
+	}
+	return s
+}
