@@ -50,6 +50,7 @@ func (w *Workspace) Submit(ctx context.Context, p SubmitParams) (SubmitResult, e
 	w.mu.Lock()
 	ws := w.ws
 	repo := w.repo
+	base := w.base
 	w.mu.Unlock()
 
 	snap, rev, err := w.Commit(CommitParams{Description: p.Description, Author: p.Author})
@@ -58,16 +59,25 @@ func (w *Workspace) Submit(ctx context.Context, p SubmitParams) (SubmitResult, e
 	}
 	_ = snap
 
-	// Squash: the stage is one logical change, so it is pushed as ONE commit even if the
-	// base had many. Without it the branch would carry the whole of easyvcs' history,
-	// which a reviewer does not want and the forge would show as unrelated commits.
+	// NOT squashed, and the branch starts from the base revision.
+	//
+	// Squashing exported ONLY the new revision, which made it a ROOT commit with no parent —
+	// and GitHub refuses a pull request whose branch "has no history in common with main".
+	// The push succeeded and the PR failed, which is the worst shape of failure: a branch
+	// nobody asked for, and no review.
+	//
+	// So the chain is exported from the base these edits were made against, through to the new
+	// commit. The branch then shares main's history and the PR is an ordinary one.
+	chain, err := w.chainFrom(base, rev.ID)
+	if err != nil {
+		return SubmitResult{}, fmt.Errorf("revision chain: %w", err)
+	}
 	shas, err := gitbridge.ExportRevisions(ws, repo, gitbridge.PushOptions{
 		Dest:      p.Dest,
 		Branch:    p.Branch,
-		Revisions: []string{rev.ID},
+		Revisions: chain,
 		Author:    p.Author,
 		Token:     p.Token,
-		Squash:    true,
 	})
 	if err != nil {
 		return SubmitResult{}, fmt.Errorf("push %s: %w", p.Branch, err)

@@ -192,53 +192,74 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 	if err != nil {
 		return extension.ToolResultData{}, errFailed("branch name: %v", err)
 	}
-	remote, err := remoteFor(repo)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
 
-	sub, err := w.Submit(ctx, stage.SubmitParams{
-		Dest:        remote,
-		Branch:      branch,
-		Token:       t.token(tenant),
-		Description: title,
-		Author:      author(tenant),
-	})
+	// The staged content, as plain files: the commit is built from these through GitHub's
+	// Git Data API so it descends from `base` (see CommitFiles for why the gitbridge export
+	// path cannot be used here).
+	files, deletes, err := stagedFiles(w)
 	if err != nil {
-		return extension.ToolResultData{}, errFailed("push %s: %v", branch, err)
+		return extension.ToolResultData{}, errFailed("read stage: %v", err)
+	}
+	if len(files) == 0 && len(deletes) == 0 {
+		return extension.ToolResultData{}, errArg("nothing staged; use gh-stage-patch first")
 	}
 
 	c, _, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
+	if _, err := c.CommitFiles(ctx, branch, base, title, files, deletes); err != nil {
+		return extension.ToolResultData{}, errFailed("commit %s: %v", branch, err)
+	}
+
 	body := argStr(args, "body")
 	pr, err := c.CreatePR(ctx, base, branch, title, body)
 	if err != nil {
-		// The branch is pushed but no PR exists. Say so, including the branch name: the caller
-		// can retry the PR without redoing the work, and a silent failure would leave an
-		// orphaned branch nobody knows about.
+		// The branch exists but no PR does. Say so, including the branch name: the caller can
+		// retry the PR without redoing the work, and a silent failure would leave an orphaned
+		// branch nobody knows about.
 		return extension.ToolResultData{}, errFailed(
-			"pushed branch %s but could not open the pull request: %v (retry with the same branch)",
+			"created branch %s but could not open the pull request: %v (retry with the same branch)",
 			branch, err)
 	}
+	// Only now is the stage safe to clear: everything it held is on the branch.
+	w.ResetEdit("")
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "opened pull request #%d\n", pr.Number)
 	fmt.Fprintf(&b, "%s\n", pr.HTMLURL)
 	fmt.Fprintf(&b, "branch: %s → %s\n", branch, base)
-	fmt.Fprintf(&b, "%d file(s)\n", len(sub.Files))
-	for _, f := range sub.Files {
-		fmt.Fprintf(&b, "  %-8s %s\n", f.Status, f.Path)
+	fmt.Fprintf(&b, "%d file(s)\n", len(files)+len(deletes))
+	for p := range files {
+		fmt.Fprintf(&b, "  %-8s %s\n", "write", p)
+	}
+	for _, p := range deletes {
+		fmt.Fprintf(&b, "  %-8s %s\n", "delete", p)
 	}
 	b.WriteString("\nCI runs on the PR; check it with gh-pr-checks.")
 	return extension.ToolResultData{
 		Content: b.String(),
 		Data: map[string]any{
 			"pr": pr.Number, "url": pr.HTMLURL, "branch": branch, "base": base,
-			"sha": sub.SHA, "files": len(sub.Files),
+			"files": len(files) + len(deletes),
 		},
 	}, nil
+}
+
+// stagedFiles reads the stage into what the Git Data API needs: path -> content, and the paths
+// to delete.
+func stagedFiles(w *stage.Workspace) (map[string]string, []string, error) {
+	files := map[string]string{}
+	var deletes []string
+	edits := w.Edits()
+	for _, e := range edits {
+		if e.Delete {
+			deletes = append(deletes, e.Path)
+			continue
+		}
+		files[e.Path] = string(e.Content)
+	}
+	return files, deletes, nil
 }
 
 // newBranchName makes a fresh branch name every time.
