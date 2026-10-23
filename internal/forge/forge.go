@@ -116,12 +116,37 @@ func splitRepoPath(remote string) (string, string, error) {
 	return strings.Join(parts[:len(parts)-1], "/"), parts[len(parts)-1], nil
 }
 
-// ListRefs returns the branches and tags, branches first then tags, each group
-// sorted by name.
+// Tags returns just this repository's tag names.
 //
-// Pagination: the SDK takes an explicit page/page-size and does NOT iterate for
-// us, so this loop must advance the page or a repository with more refs than one
-// page would silently under-report.
+// A separate method from ListRefs because a caller watching for new tags does not want the
+// branches: paging through every branch of a large repository to find that nothing changed
+// would make a one-minute poll expensive for no reason.
+//
+// Pagination: the SDK takes an explicit page/page-size and does NOT iterate for us, so
+// these loops must advance the page or a repository with more tags than one page would
+// silently under-report.
+func (c *Client) Tags(ctx context.Context) ([]string, error) {
+	out := []string{}
+	for page := 1; page <= 200; page++ {
+		tags, _, err := c.c.ListRepoTags(c.Owner, c.Repo, gitea.ListRepoTagsOptions{
+			ListOptions: gitea.ListOptions{Page: page, PageSize: listPageSize},
+		})
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		for _, t := range tags {
+			out = append(out, t.Name)
+		}
+		if len(tags) < listPageSize {
+			break
+		}
+	}
+	return out, nil
+}
+
+// ListRefs returns every branch and tag.
+//
+// Pagination: see the note on Tags — the SDK does not iterate for us.
 func (c *Client) ListRefs(ctx context.Context) ([]Ref, error) {
 	out := []Ref{}
 

@@ -5,7 +5,7 @@ go 1.26.5
 require (
 	code.gitea.io/sdk/gitea v0.25.1
 	connectrpc.com/connect/v2 v2.0.0
-	github.com/easydev-org/easybus-sdk v0.7.0
+	github.com/easydev-org/easybus-sdk v0.8.4
 	github.com/easylab-platform/easyvcs v0.9.4
 	google.golang.org/protobuf v1.36.12
 )

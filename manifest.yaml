@@ -890,6 +890,29 @@ tools:
             zh: "修改所基于的版本（默认：最新）。"
       required: [remote, title]
 
+# ── channels ────────────────────────────────────────────────────────────────
+#
+# What this extension PUBLISHES. Declared so a client can offer a subscription without the
+# user having to know the topic format: "follow this repository's tags" is a choice, not a
+# pattern to derive.
+#
+# A session subscribes with NATS subject syntax, e.g. `tag.agentdev/mrflow.>` for one
+# repository's tags, or `tag.>` for all of them. Publishing is one-way: this extension never
+# reads these channels back.
+channels:
+  - name: gitea
+    description: Repository events from the forge.
+    descriptions:
+      zh: 来自 forge 的仓库事件。
+    topics:
+      - pattern: "tag.<owner>/<repo>.<tag>"
+        description: >-
+          A new tag appeared on a repository. Subscribe with "tag.<owner>/<repo>.>" to
+          follow one repository's tags.
+        descriptions:
+          zh: >-
+            仓库上出现了新 tag。用 "tag.<owner>/<repo>.>" 订阅某个仓库的全部 tag。
+
 # ── permissions ─────────────────────────────────────────────────────────────
 #
 # What a caller must hold to perform a WRITE. Read tools are deliberately ungated: a
