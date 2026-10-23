@@ -127,6 +127,12 @@ func (t *toolset) mrClose(ctx context.Context, args map[string]any, session, ten
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
+	// Closing is a write: it changes the review's state even though it does not merge.
+	// Gated separately from mr.merge so a reviewer can be allowed to close a stale request
+	// without being able to land one.
+	if err := t.requireRepo(ctx, PermMRClose, args, session, tenant); err != nil {
+		return extension.ToolResultData{}, err
+	}
 	cl, err := t.mrClient(ctx, args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -161,6 +167,12 @@ func (t *toolset) mrClose(ctx context.Context, args map[string]any, session, ten
 func (t *toolset) mrMerge(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
 	idx, err := mrIndex(args)
 	if err != nil {
+		return extension.ToolResultData{}, err
+	}
+	// Permission gate, BEFORE any forge call. Checked here rather than trusted from the
+	// agent because the token lives in this process: this is the only place that can stop
+	// the merge from happening, and the target (which repository) is only known here.
+	if err := t.requireRepo(ctx, PermMRMerge, args, session, tenant); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	cl, err := t.mrClient(ctx, args, session, tenant)

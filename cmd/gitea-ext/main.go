@@ -83,9 +83,14 @@ func main() {
 	})
 
 	specs := make(map[string]extension.ToolSpec, len(handlers))
+	requires := tools.RequireMap()
 	for name, h := range handlers {
 		h := h
 		specs[name] = extension.ToolSpec{
+			// Attach the permission keys HERE rather than in each handler: the SDK needs
+			// them before it calls the handler, and a handler that forgot to declare its
+			// own requirement would simply never be gated.
+			Requires: requires[name],
 			Execute: func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
 				// Install a progress sink for THIS call: the tenant and call id are
 				// only known here. Without it a `git clone` of a large repo shows

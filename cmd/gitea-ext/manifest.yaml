@@ -503,6 +503,7 @@ tools:
     descriptions:
       zh: >-
         关闭 MR（不合并），用于放弃已被取代的提交；`reopen: true` 可重新打开。
+    requires: [mr.close]
     input_schema:
       type: object
       properties:
@@ -544,6 +545,7 @@ tools:
         把 MR 合并进目标分支。这是**唯一**能改动目标分支的工具：`git-push` 已被拒绝，
         因此合入代码是一个显式、可评审的动作。默认合并后删除 agent 头分支，
         `delete-branch: false` 可保留。
+    requires: [mr.merge]
     input_schema:
       type: object
       properties:
@@ -887,6 +889,77 @@ tools:
           descriptions:
             zh: "修改所基于的版本（默认：最新）。"
       required: [remote, title]
+
+# ── permissions ─────────────────────────────────────────────────────────────
+#
+# What a caller must hold to perform a WRITE. Read tools are deliberately ungated: a
+# session that may not merge should still be able to look at the pull request, and gating
+# reads would make every grant also a grant of visibility.
+#
+# A permission is a (key, params) pair, not a bare name — "merge in this repository" and
+# "merge in that one" are two authorisations, so a session may hold several grants of the
+# same key. The `params` block below uses the SAME schema as config knobs, so a client
+# renders a real form.
+#
+# `repo` accepts `owner/name` or a `*` wildcard (`agentdev/*`, `*`). Whether a grant covers
+# a call is decided by this extension, which is the only side that knows a remote URL
+# denotes a repository.
+permissions:
+  - key: mr.merge
+    label: Merge pull requests
+    descriptions:
+      zh: 合并 MR
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: >-
+          Repository as owner/name, or a wildcard such as agentdev/* or *.
+        descriptions:
+          zh: 仓库，owner/name 形式，或通配符如 agentdev/* 或 *。
+
+  - key: mr.close
+    label: Close pull requests without merging
+    descriptions:
+      zh: 关闭 MR（不合并）
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: >-
+          Repository as owner/name, or a wildcard such as agentdev/* or *.
+        descriptions:
+          zh: 仓库，owner/name 形式，或通配符如 agentdev/* 或 *。
+
+  - key: repo.create
+    label: Create repositories
+    descriptions:
+      zh: 创建仓库
+    risk: write
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: >-
+          Repository as owner/name, or a wildcard such as agentdev/* or *.
+        descriptions:
+          zh: 仓库，owner/name 形式，或通配符如 agentdev/* 或 *。
+
+  - key: repo.delete
+    label: Delete repositories
+    descriptions:
+      zh: 删除仓库
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        required: true
+        description: >-
+          Repository as owner/name, or a wildcard such as agentdev/* or *.
+        descriptions:
+          zh: 仓库，owner/name 形式，或通配符如 agentdev/* 或 *。
 
 config:
   - name: sandboxes

@@ -34,6 +34,29 @@ type Deps struct {
 // Handler is one tool implementation.
 type Handler func(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error)
 
+// RequireMap names the permissions each tool needs.
+//
+// Separate from the handler map because a Handler is just a func: attaching the
+// requirement to the func value would make it invisible to anything reading the manifest,
+// and the two are consumed by different layers (this process and the agent).
+//
+// Only WRITE-class tools appear here. Read tools are deliberately ungated: a session that
+// may not merge should still be able to LOOK at the pull request, and gating reads would
+// make every permission grant also a grant of visibility.
+var requireMap = map[string][]string{
+	"git-mr-merge": {PermMRMerge},
+	"git-mr-close": {PermMRClose},
+}
+
+// RequireMap returns a copy so a caller cannot mutate the shared table.
+func RequireMap() map[string][]string {
+	out := make(map[string][]string, len(requireMap))
+	for k, v := range requireMap {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
 // Registry builds the git-* handler map.
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
