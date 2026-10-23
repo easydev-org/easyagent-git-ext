@@ -632,6 +632,30 @@ tools:
   #
   # These tools operate on content stored in a database, so the whole flow —
   # read, edit, diff, submit — happens without a checkout.
+  - name: git-stage-import
+    description: >-
+      Import a remote branch into the extension's content store. This is the step that
+      makes the staging tools usable: they read stored content, so a base revision has
+      to exist first. Idempotent — importing the same branch twice adds nothing.
+    descriptions:
+      zh: >-
+        把远端分支导入扩展的内容存储。这是让暂存工具可用的第一步：它们读取存储内容，
+        因此必须先有一个基准版本。幂等：重复导入同一分支不会新增内容。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL, e.g. https://git.example.com/owner/repo.git"
+          descriptions:
+            zh: "仓库地址，如 https://git.example.com/owner/repo.git"
+        branch:
+          type: string
+          description: "Branch to import (default: the configured default branch)."
+          descriptions:
+            zh: "要导入的分支（默认：配置的默认分支）。"
+      required: [remote]
+
   - name: git-tree
     description: >-
       List the files in a repository WITHOUT cloning it. Reads from the extension's

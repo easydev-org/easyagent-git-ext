@@ -75,6 +75,7 @@ func Registry(d Deps) map[string]Handler {
 			"git-stage-diff":   t.stageDiff,
 			"git-stage-reset":  t.stageReset,
 			"git-stage-submit": t.stageSubmit,
+			"git-stage-import": t.stageImport,
 		} {
 			out[name] = h
 		}

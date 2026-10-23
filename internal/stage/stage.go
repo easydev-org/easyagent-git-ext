@@ -50,6 +50,9 @@ type Workspace struct {
 	// repo is the easyvcs handle, kept because gitbridge needs it to export and because
 	// revision.Workspace does not expose its store.
 	repo *store.Repo
+	// tenant names the easyvcs namespace this stage belongs to, so an empty store can be
+	// seeded from a remote without asking the caller for it again.
+	tenantID string
 	// base is the revision the stage started from. Submitting produces a child of it,
 	// so the resulting commit is a normal fast-forwardable revision.
 	base string
@@ -110,9 +113,9 @@ func (s *Stage) Open(ctx context.Context, tenant, session, repoRef, baseRef stri
 	}
 	s.mu.Unlock()
 
-	repo, err := s.store.OpenRepo(s.namespace(tenant))
+	repo, err := s.ensureRepo(tenant)
 	if err != nil {
-		return nil, fmt.Errorf("open easyvcs repo: %w", err)
+		return nil, err
 	}
 	ws := revision.NewWorkspace(repo)
 
@@ -122,7 +125,7 @@ func (s *Stage) Open(ctx context.Context, tenant, session, repoRef, baseRef stri
 	}
 
 	w := &Workspace{
-		tenant: tenant, session: session, repoRef: repoRef,
+		tenant: tenant, tenantID: tenant, session: session, repoRef: repoRef,
 		ws: ws, repo: repo, base: base, edits: map[string]Edit{},
 	}
 
@@ -130,6 +133,30 @@ func (s *Stage) Open(ctx context.Context, tenant, session, repoRef, baseRef stri
 	s.areas[key] = w
 	s.mu.Unlock()
 	return w, nil
+}
+
+// ensureRepo returns the tenant's easyvcs repository, creating an empty one the first
+// time it is needed.
+//
+// A stage on a repository that does not exist yet is not an error the caller can fix: it
+// simply has not been used before. Creating it here means "read a file" works on a fresh
+// deployment without a separate provisioning step.
+func (s *Stage) ensureRepo(tenant string) (*store.Repo, error) {
+	ref := s.namespace(tenant)
+	exists, err := s.store.RepoExists(ref)
+	if err != nil {
+		return nil, fmt.Errorf("check easyvcs repo: %w", err)
+	}
+	if !exists {
+		if _, err := s.store.Create(ref); err != nil {
+			return nil, fmt.Errorf("create easyvcs repo: %w", err)
+		}
+	}
+	repo, err := s.store.OpenRepo(ref)
+	if err != nil {
+		return nil, fmt.Errorf("open easyvcs repo: %w", err)
+	}
+	return repo, nil
 }
 
 // resolveRef turns a ref expression into a revision id.
@@ -151,7 +178,11 @@ func resolveRef(ws *revision.Workspace, ref string) (string, error) {
 			return "", fmt.Errorf("resolve tip: %w", err)
 		}
 		if len(revs) == 0 {
-			return "", fmt.Errorf("repository has no revisions yet")
+			// An empty repository is a real state, not a failure: nothing has been
+			// imported yet. Say what to do, because "no revisions" alone reads like a bug.
+			return "", fmt.Errorf("nothing has been imported into this repository yet; " +
+				"import a remote first (the staging area reads from stored content, so it " +
+				"needs a base revision to start from)")
 		}
 		return revs[0].ID, nil
 	}
