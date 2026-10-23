@@ -115,6 +115,16 @@ func Registry(d Deps) map[string]Handler {
 		"gh-pr-checks": t.prChecks,
 		"gh-pr-merge":  t.prMerge,
 		"gh-pr-close":  t.prClose,
+
+		// What a pull request CHANGED. Without these, reviewing a PR means reading its title.
+		"gh-pr-files": t.prFiles,
+		"gh-pr-diff":  t.prDiff,
+
+		// CI. gh-run-jobs is the live view; gh-run-log is available once a job finishes.
+		"gh-workflow-list": t.workflowList,
+		"gh-run-list":      t.runList,
+		"gh-run-jobs":      t.runJobs,
+		"gh-run-log":       t.runLog,
 	}
 }
 

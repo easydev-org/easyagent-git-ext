@@ -659,3 +659,134 @@ tools:
             zh: PR 编号。
       required: [repo, number]
     requires: [pr.close]
+
+  - name: gh-pr-files
+    description: >-
+      The files a pull request changes: path, status, and how many lines each adds and removes.
+      A file whose patch GitHub does not send (binary, or too large) is marked as such rather
+      than shown as an empty change.
+    descriptions:
+      zh: >-
+        PR 改动的文件列表：路径、状态、每个文件增删多少行。GitHub 未提供补丁的文件（二进制或过大）
+        会被明确标注，而不是显示为空改动。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-pr-diff
+    description: >-
+      The whole pull request as one unified diff, in file order. Capped at 2000 lines, and says
+      so when the cap applies.
+    descriptions:
+      zh: 整个 PR 的 unified diff，按文件顺序。上限 2000 行，触发上限时会明确说明。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-workflow-list
+    description: The repository's Actions workflows.
+    descriptions:
+      zh: 仓库的 Actions 工作流列表。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+      required: [repo]
+
+  - name: gh-run-list
+    description: Workflow runs, newest first, filterable by branch and trigger.
+    descriptions:
+      zh: 工作流运行列表，最新的在前，可按分支与触发方式过滤。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        branch:
+          type: string
+          descriptions:
+            zh: 只显示该分支的运行。
+        event:
+          type: string
+          description: push | pull_request | workflow_dispatch | ...
+          descriptions:
+            zh: push | pull_request | workflow_dispatch | ...
+        limit:
+          type: integer
+          descriptions:
+            zh: 最多返回条数（默认 30）。
+      required: [repo]
+
+  - name: gh-run-jobs
+    description: >-
+      The jobs and per-step status of a run. This is the LIVE view: while a run is going, the
+      step currently executing reports in_progress. GitHub publishes a job's LOG only after the
+      job finishes, so use this to watch progress and gh-run-log to read the output.
+    descriptions:
+      zh: >-
+        某次运行的 job 与逐步状态。这是实时视图：运行进行中时，正在执行的步骤会显示 in_progress。
+        GitHub 只在 job 结束后才提供日志，所以用本工具观察进度、用 gh-run-log 读输出。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+      required: [repo, run]
+
+  - name: gh-run-log
+    description: >-
+      A run's logs, one section per job. Available only once the jobs have finished — GitHub
+      has no API for a running job's output. Defaults to 500 lines per job and says when that
+      cap truncates the log.
+    descriptions:
+      zh: >-
+        某次运行的日志，按 job 分段。仅在 job 结束后可用——GitHub 没有提供运行中 job 输出的 API。
+        每个 job 默认最多 500 行，触发上限时会明确说明被截断。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+        lines:
+          type: integer
+          description: Max lines per job (default 500).
+          descriptions:
+            zh: 每个 job 最多返回的行数（默认 500）。
+      required: [repo, run]

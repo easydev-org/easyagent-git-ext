@@ -45,6 +45,9 @@ type Client struct {
 	// recorded here.
 	lastRate gogithub.Rate
 	hasRate  bool
+	// httpTimeout bounds the log archive download, which bypasses go-github (the URL is
+	// pre-signed, so it must not be sent with the Authorization header).
+	httpTimeout time.Duration
 }
 
 // Options builds a Client.
@@ -72,6 +75,7 @@ func New(o Options) (*Client, error) {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
+	c.httpTimeout = timeout
 	// Functional options, and an explicit timeout: go-github's default client has none, so a
 	// hung connection would hold a tool call open until the turn's own deadline.
 	opts := []gogithub.ClientOptionsFunc{gogithub.WithTimeout(timeout)}
