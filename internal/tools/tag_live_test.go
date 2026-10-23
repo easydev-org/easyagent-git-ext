@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +43,6 @@ func TestE2ETagDeleteTakesRelease(t *testing.T) {
 	ctx = extension.WithGrants(ctx, []*easybus.Grant{
 		{Key: PermTagCreate, Params: easybus.Struct(map[string]any{"repo": repo})},
 		{Key: PermTagDelete, Params: easybus.Struct(map[string]any{"repo": repo})},
-		{Key: PermReleaseDelete, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 
 	name := fmt.Sprintf("v0.0.%d", time.Now().Unix())
@@ -56,12 +56,17 @@ func TestE2ETagDeleteTakesRelease(t *testing.T) {
 	}
 	t.Logf("   %s", res.Content)
 
-	t.Logf("2. manual release publish must be refused")
-	if _, err := reg["gh-release-create"](ctx,
-		map[string]any{"repo": repo, "tag": name, "body": "should not be published"}, session, tenant); err == nil {
-		t.Fatal("gh-release-create published a release; it must always refuse")
-	} else {
-		t.Logf("   refused: %v", err)
+	t.Logf("2. reading the annotation back through gh-tag-show")
+	res, err = reg["gh-tag-show"](ctx, map[string]any{"repo": repo, "tag": name}, session, tenant)
+	if err != nil {
+		t.Fatalf("gh-tag-show: %v", err)
+	}
+	t.Logf("   %s", strings.ReplaceAll(res.Content, "\n", "\n   "))
+	if !strings.Contains(res.Content, "annotated: yes") {
+		t.Errorf("the tag was created annotated but gh-tag-show disagrees: %s", res.Content)
+	}
+	if !strings.Contains(res.Content, "delete test") {
+		t.Errorf("the tag's message is missing from gh-tag-show: %s", res.Content)
 	}
 
 	t.Logf("3. deleting the tag (takes any release with it)")

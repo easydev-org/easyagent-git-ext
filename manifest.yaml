@@ -126,20 +126,6 @@ permissions:
         descriptions:
           zh: 仓库（owner/name），或用 * 表示全部。
 
-  - key: release.delete
-    # destructive: a published release may already have been acted on downstream.
-    label: Delete releases
-    descriptions:
-      zh: 删除 release
-    risk: destructive
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
 tools:
   # ── reading ──────────────────────────────────────────────────────────────────
   - name: gh-info
@@ -341,6 +327,32 @@ tools:
             zh: 仓库。
       required: [repo]
 
+  - name: gh-tag-show
+    description: >-
+      One tag's annotation: the message, who tagged it and when. A separate call because
+      GitHub's tag LIST does not include the message — reading it costs one request per tag,
+      so folding it into the list would make listing a large repository exceed the anonymous
+      rate limit. A lightweight tag is reported as having no annotation rather than an empty
+      one.
+    descriptions:
+      zh: >-
+        查看单个标签的附注：说明、打标签的人与时间。之所以单独一个工具，是因为 GitHub 的标签列表不含附注——
+        读取它每个标签要多一次请求，塞进列表会让大仓库的列举直接超出匿名速率限制。
+        轻量标签会明确报告为「无附注」，而不是返回空字符串。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        tag:
+          type: string
+          description: Tag name, e.g. v1.2.3.
+          descriptions:
+            zh: 标签名，例如 v1.2.3。
+      required: [repo, tag]
+
   - name: gh-tag-delete
     description: >-
       Delete a tag AND its release. The two go together unconditionally: a release left behind
@@ -361,44 +373,6 @@ tools:
             zh: 标签名。
       required: [repo, tag]
     requires: [tag.delete]
-
-  - name: gh-release-create
-    description: >-
-      REFUSED. Releases are published by CI, not by hand — a hand-made release would announce a
-      version before the tests, build and artefact push have run. Push a tag with gh-tag-create
-      and let the repository's release workflow publish it.
-    descriptions:
-      zh: >-
-        已禁用。release 由 CI 发布，不可手动创建——手动发布会在测试、构建与产物推送之前就宣告版本。
-        用 gh-tag-create 打标签，由仓库的 release 工作流去发布。
-    # No parameters are declared: the handler refuses every call, so advertising an argument
-    # list would suggest there is a form of the call that works.
-    input_schema:
-      type: object
-      properties: {}
-    # No permission either. A permission is "what you must hold to do this", and nothing is
-    # sufficient to do this — the refusal is unconditional.
-
-  - name: gh-release-delete
-    description: >-
-      Unpublish a release, keeping the tag. For "remove this version entirely" use
-      gh-tag-delete, which always removes both.
-    descriptions:
-      zh: >-
-        撤销 release 的发布，保留标签。要「彻底删除这个版本」请用 gh-tag-delete，它总是两者一起删。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: release 所在的标签名。
-      required: [repo, tag]
-    requires: [release.delete]
 
   - name: gh-repo-create
     description: >-

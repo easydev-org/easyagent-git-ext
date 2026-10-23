@@ -49,9 +49,6 @@ const (
 	// NOTE: there is deliberately NO release.create permission. Releases are published by CI,
 	// not by a caller, so no grant would make the operation allowed — declaring a key would only
 	// invite somebody to ask for one.
-	// PermReleaseDelete removes a published release. Destructive: consumers may already have
-	// acted on the announcement.
-	PermReleaseDelete = "release.delete"
 )
 
 // requireMap names the permissions each tool needs.
@@ -60,14 +57,13 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	"gh-pr-create":      {PermPRCreate},
-	"gh-pr-merge":       {PermPRMerge},
-	"gh-pr-close":       {PermPRClose},
-	"gh-repo-create":    {PermRepoCreate},
-	"gh-repo-delete":    {PermRepoDelete},
-	"gh-tag-create":     {PermTagCreate},
-	"gh-tag-delete":     {PermTagDelete},
-	"gh-release-delete": {PermReleaseDelete},
+	"gh-pr-create":   {PermPRCreate},
+	"gh-pr-merge":    {PermPRMerge},
+	"gh-pr-close":    {PermPRClose},
+	"gh-repo-create": {PermRepoCreate},
+	"gh-repo-delete": {PermRepoDelete},
+	"gh-tag-create":  {PermTagCreate},
+	"gh-tag-delete":  {PermTagDelete},
 }
 
 // RequireMap returns a copy so a caller cannot mutate the shared table.
@@ -96,11 +92,10 @@ func Registry(d Deps) map[string]Handler {
 		"gh-packages": t.packages,
 
 		// Publishing. gh-tag-create is the event a downstream subscription waits for.
-		"gh-tag-create":     t.tagCreate,
-		"gh-tag-list":       t.tagList,
-		"gh-tag-delete":     t.tagDelete,
-		"gh-release-create": t.releaseCreate,
-		"gh-release-delete": t.releaseDelete,
+		"gh-tag-create": t.tagCreate,
+		"gh-tag-list":   t.tagList,
+		"gh-tag-show":   t.tagShow,
+		"gh-tag-delete": t.tagDelete,
 
 		// Repository administration.
 		"gh-repo-create": t.repoCreate,

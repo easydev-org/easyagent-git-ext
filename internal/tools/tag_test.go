@@ -29,28 +29,21 @@ func TestTagCreateRequiresMessage(t *testing.T) {
 	}
 }
 
-// Publishing a release by hand is DISABLED, not merely gated.
+// The release tools are GONE, not merely refusing.
 //
-// The refusal must be unconditional: no grant makes it allowed, and the message has to point at
-// the path that does work (push a tag, let CI publish), or a caller keeps trying.
-func TestReleaseCreateIsAlwaysRefused(t *testing.T) {
+// Publishing belongs to CI and deleting a release separately was a way to leave an orphaned
+// announcement behind. Both are unreachable now — the tag delete removes the release with it,
+// which is the only removal that cannot produce a broken state.
+func TestReleaseToolsAreAbsent(t *testing.T) {
 	reg := Registry(Deps{})
-
-	// With every permission we know of, and with an otherwise-valid argument set.
-	ctx := extension.WithGrants(context.Background(), []*easybus.Grant{
-		{Key: PermReleaseDelete, Params: easybus.Struct(map[string]any{"repo": "o/r"})},
-		{Key: PermTagCreate, Params: easybus.Struct(map[string]any{"repo": "o/r"})},
-	})
-	_, err := reg["gh-release-create"](ctx,
-		map[string]any{"repo": "o/r", "tag": "v1", "body": "notes"}, "s", "t")
-	if err == nil {
-		t.Fatal("manual release publishing must be refused even with grants")
+	for _, name := range []string{"gh-release-create", "gh-release-delete"} {
+		if _, ok := reg[name]; ok {
+			t.Errorf("%s is still registered; releases are CI's job and a tag delete takes its release", name)
+		}
 	}
-	if !strings.Contains(err.Error(), "CI") {
-		t.Errorf("err = %v, want it to say releases are published by CI", err)
-	}
-	if !strings.Contains(err.Error(), "gh-tag-create") {
-		t.Errorf("err = %v, want it to name the path that does work", err)
+	// The READ tool stays: seeing what was published is how a downstream job decides to act.
+	if _, ok := reg["gh-releases"]; !ok {
+		t.Error("gh-releases should remain: reading published versions is a legitimate need")
 	}
 }
 
@@ -80,9 +73,8 @@ func TestTagDeleteHasNoWithTagOption(t *testing.T) {
 func TestPublishingToolsAreGated(t *testing.T) {
 	reg := Registry(Deps{})
 	cases := map[string]map[string]any{
-		"gh-tag-create":     {"repo": "o/r", "tag": "v1", "message": "m"},
-		"gh-tag-delete":     {"repo": "o/r", "tag": "v1"},
-		"gh-release-delete": {"repo": "o/r", "tag": "v1"},
+		"gh-tag-create": {"repo": "o/r", "tag": "v1", "message": "m"},
+		"gh-tag-delete": {"repo": "o/r", "tag": "v1"},
 	}
 	for name, args := range cases {
 		h, ok := reg[name]

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 
 	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
@@ -123,50 +122,49 @@ func (t *toolset) tagDelete(ctx context.Context, args map[string]any, session, t
 	}, nil
 }
 
-// releaseCreate REFUSES, on purpose.
+// tagShow reads one tag's annotation.
 //
-// Publishing a release is not a thing this extension may do by hand. A release is the event
-// every downstream consumer reacts to, and a hand-made one bypasses whatever the repository's
-// CI does first: the tests, the build, the artefact push. The version would be announced as
-// real while the thing it announces was never produced.
-//
-// So releases are created by CI. This handler exists rather than the tool being absent because
-// a caller that expects the name should be told WHY it is refused, instead of finding an
-// unknown tool and guessing.
-func (t *toolset) releaseCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	return extension.ToolResultData{}, &extension.TypedError{
-		Code: easybus.ToolResultErrorCodePermissionDenied,
-		Message: "publishing a release by hand is disabled: releases must be created by CI, so that " +
-			"the version is only announced after the tests, build and artefact push have succeeded. " +
-			"Push a tag (gh-tag-create) and let the repository's release workflow publish it.",
+// Separate from gh-tag-list because GitHub's tag LIST does not include the message: reading it
+// costs one extra request PER TAG. Folding that into the list would turn a 1-request listing
+// into 1+N, and anonymous access allows 60 requests an hour — so listing a repository with more
+// than 60 tags would fail outright, which is worse than not showing messages.
+func (t *toolset) tagShow(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	c, repo, err := t.clientFor(tenant, args)
+	if err != nil {
+		return extension.ToolResultData{}, err
 	}
-}
+	name, err := required(args, "tag")
+	if err != nil {
+		return extension.ToolResultData{}, err
+	}
+	d, err := c.ShowTag(ctx, name)
+	if err != nil {
+		return extension.ToolResultData{}, errFailed("%s@%s: %v", repo, name, err)
+	}
 
-// releaseDelete unpublishes a release, leaving the tag.
-//
-// This is the narrow operation: withdraw the announcement while keeping the version. For
-// "remove this version entirely" use gh-tag-delete, which always removes both — so there is no
-// way to leave a release orphaned behind a deleted tag.
-func (t *toolset) releaseDelete(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	repo, err := required(args, "repo")
-	if err != nil {
-		return extension.ToolResultData{}, err
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", d.Name)
+	fmt.Fprintf(&b, "commit: %s\n", d.SHA)
+	if !d.Annotated {
+		// Said explicitly: "no annotation" and "an empty annotation" are different facts, and a
+		// caller that asked for a message needs to know this tag does not have one.
+		b.WriteString("annotated: no (lightweight tag; it carries no message)\n")
+		return extension.ToolResultData{
+			Content: b.String(),
+			Data:    map[string]any{"tag": d},
+		}, nil
 	}
-	tag, err := required(args, "tag")
-	if err != nil {
-		return extension.ToolResultData{}, err
+	b.WriteString("annotated: yes\n")
+	if d.TaggerName != "" || d.TaggerDate != "" {
+		fmt.Fprintf(&b, "tagger: %s <%s> %s\n", d.TaggerName, d.TaggerEmail, d.TaggerDate)
 	}
-	if err := t.requireRepo(ctx, PermReleaseDelete, repo); err != nil {
-		return extension.ToolResultData{}, err
-	}
-	c, _, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	if err := c.DeleteRelease(ctx, tag); err != nil {
-		return extension.ToolResultData{}, errFailed("%s@%s: %v", repo, tag, err)
+	b.WriteString("\n")
+	b.WriteString(d.Message)
+	if !strings.HasSuffix(d.Message, "\n") {
+		b.WriteString("\n")
 	}
 	return extension.ToolResultData{
-		Content: fmt.Sprintf("deleted release %s (the tag remains)", tag),
+		Content: b.String(),
+		Data:    map[string]any{"tag": d},
 	}, nil
 }

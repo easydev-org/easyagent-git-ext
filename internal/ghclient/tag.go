@@ -120,6 +120,60 @@ func isHex(s string) bool {
 	return true
 }
 
+// TagDetail is one tag's full record.
+type TagDetail struct {
+	Tag
+	// Message is the annotation. Empty for a lightweight tag — which cannot be created here,
+	// but can exist in a repository that was tagged by other means.
+	Message string
+	// Tagger is who made the tag, and when.
+	TaggerName  string
+	TaggerEmail string
+	TaggerDate  string
+}
+
+// ShowTag reads one tag's annotation.
+//
+// WHY A SEPARATE CALL. `GET /repos/{o}/{r}/tags` returns only name and commit — GitHub does not
+// include the message in the list. Reading it means a second call per tag, so it is exposed as
+// a per-tag operation rather than an option on the list: making the list fetch one object per
+// tag would turn a 1-request listing into 1+N, and anonymous access allows 60 requests an hour.
+// A caller that wants a specific tag's message asks for that tag.
+//
+// A LIGHTWEIGHT tag has no message at all; that is reported as such rather than as an empty
+// string, because "no annotation" and "an empty annotation" are different facts.
+func (c *Client) ShowTag(ctx context.Context, name string) (TagDetail, error) {
+	if strings.TrimSpace(name) == "" {
+		return TagDetail{}, fmt.Errorf("tag name is required")
+	}
+
+	// The ref gives either the tag object's sha (annotated) or the commit's (lightweight).
+	ref, resp, err := c.gh.Git.GetRef(ctx, c.Owner, c.Repo, "refs/tags/"+name)
+	c.note(resp)
+	if err != nil {
+		return TagDetail{}, wrap(err)
+	}
+	sha := ref.GetObject().GetSHA()
+
+	d := TagDetail{Tag: Tag{Name: name, SHA: sha}}
+	// Annotated: the ref points at a tag object, which carries the message.
+	if t, tresp, terr := c.gh.Git.GetTag(ctx, c.Owner, c.Repo, sha); terr == nil {
+		c.note(tresp)
+		d.Annotated = true
+		d.Message = t.GetMessage()
+		if tg := t.GetTagger(); tg != nil {
+			d.TaggerName = tg.GetName()
+			d.TaggerEmail = tg.GetEmail()
+			d.TaggerDate = tg.GetDate().Format("2006-01-02 15:04:05")
+		}
+		// The object a tag points at is the commit callers care about.
+		if inner := t.GetObject().GetSHA(); inner != "" {
+			d.SHA = inner
+		}
+	}
+	return d, nil
+}
+
 // ListTags returns tags with the commit each points at. Paged.
 func (c *Client) ListTags(ctx context.Context) ([]Tag, error) {
 	var out []Tag
