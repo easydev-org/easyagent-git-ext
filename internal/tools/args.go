@@ -9,6 +9,17 @@ func argStr(args map[string]any, key string) string {
 	return strings.TrimSpace(v)
 }
 
+// argStrRaw reads a string WITHOUT trimming.
+//
+// Used for file CONTENT: argStr's TrimSpace is right for a path or a branch name, and
+// wrong for a file body — it silently eats the trailing newline, so a file written as
+// "x\n" comes back as "x". POSIX text files end with a newline, and dropping it changes
+// the file.
+func argStrRaw(args map[string]any, key string) string {
+	v, _ := args[key].(string)
+	return v
+}
+
 func argInt(args map[string]any, key string, def int) int {
 	switch v := args[key].(type) {
 	case float64:

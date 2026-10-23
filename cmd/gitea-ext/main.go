@@ -14,8 +14,10 @@ import (
 	"github.com/easydev-org/easybus-sdk/extension"
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
+	easyvcsstore "github.com/easylab-platform/easyvcs/store"
 
 	"github.com/easydev-org/easyagent-gitea-ext/internal/sandbox"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/stage"
 	"github.com/easydev-org/easyagent-gitea-ext/internal/tools"
 )
 
@@ -40,8 +42,32 @@ func main() {
 
 	var ext *extension.Extension
 	cache := sandbox.NewClientCache(16)
+
+	// The staging area is OPTIONAL: it needs an easyvcs database, and a deployment
+	// without one should still serve every other tool. It is opened once at startup
+	// rather than lazily so a bad DSN fails here, with a clear message, instead of
+	// inside the first user's tool call.
+	var stageArea *stage.Stage
+	if dsn := envOr("EASYVCS_DSN", ""); dsn != "" {
+		kind := envOr("EASYVCS_DRIVER", "postgres")
+		cs, err := easyvcsstore.OpenDriver(easyvcsstore.DriverConfig{Kind: kind, DSN: dsn})
+		if err != nil {
+			log.Error("easyvcs open failed; staging tools disabled", "driver", kind, "err", err)
+		} else if err := cs.Init(); err != nil {
+			log.Error("easyvcs init failed; staging tools disabled", "err", err)
+		} else {
+			stageArea = stage.New(cs, func(tenant string) easyvcsstore.RepoRef {
+				// One namespace per tenant: the mirror content a tenant stages against is
+				// the same content its git-clone tools see.
+				return easyvcsstore.RepoRef{Name: "tenant-" + tenant}
+			})
+			log.Info("staging enabled", "driver", kind)
+		}
+	}
+
 	handlers := tools.Registry(tools.Deps{
 		Cache: cache,
+		Stage: stageArea,
 		GetConfig: func(name, session, tenant string) any {
 			if ext == nil {
 				return nil

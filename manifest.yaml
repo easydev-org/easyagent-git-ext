@@ -621,6 +621,249 @@ tools:
       required: [remote, path]
     required_config: [servers]
 
+  # ── Staging area ────────────────────────────────────────────────────────────
+  #
+  # Read and edit repository content WITHOUT a clone and WITHOUT a sandbox.
+  #
+  # The git-* tools above run git inside a sandbox, which is right for "build this,
+  # run the tests". It is the wrong shape for "change one line and open a PR":
+  # spawning a container to send three API calls turns a one-second edit into a
+  # minute-long one, and hides the change until the container exists.
+  #
+  # These tools operate on content stored in a database, so the whole flow —
+  # read, edit, diff, submit — happens without a checkout.
+  - name: git-tree
+    description: >-
+      List the files in a repository WITHOUT cloning it. Reads from the extension's
+      content store, so no sandbox is needed. Optionally filter by path prefix.
+    descriptions:
+      zh: >-
+        不克隆仓库直接列出文件。从扩展的内容存储读取，无需沙箱。可按路径前缀过滤。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured (default: the extension's default repository)."
+          descriptions:
+            zh: "配置中的仓库名（默认：扩展的默认仓库）。"
+        path:
+          type: string
+          description: "Only list paths with this prefix."
+          descriptions:
+            zh: "只列出带此前缀的路径。"
+        ref:
+          type: string
+          description: "Revision to read from (default: the tip)."
+          descriptions:
+            zh: "读取的版本（默认：最新）。"
+
+  - name: git-read
+    description: >-
+      Read one file from a repository WITHOUT cloning it. Returns the staged version
+      when the path has uncommitted edits, so a caller always sees its own writes.
+    descriptions:
+      zh: >-
+        不克隆仓库直接读取单个文件。若该路径有未提交的暂存修改，返回暂存版本，
+        因此调用方总能看到自己刚写入的内容。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        path:
+          type: string
+          description: "File path inside the repository."
+          descriptions:
+            zh: "仓库内文件路径。"
+        ref:
+          type: string
+          description: "Revision to read from (default: the tip)."
+          descriptions:
+            zh: "读取的版本（默认：最新）。"
+      required: [path]
+
+  - name: git-write
+    description: >-
+      Stage a new or replaced file. Nothing is pushed yet: the change lives in the
+      staging area until git-stage-submit. Staging the same path twice replaces the
+      earlier content rather than stacking edits.
+    descriptions:
+      zh: >-
+        暂存新建或覆盖的文件。此时不会推送：修改留在暂存区，直到
+        git-stage-submit。同一路径重复暂存会替换先前内容，而不是叠加。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        path:
+          type: string
+          description: "File path to write."
+          descriptions:
+            zh: "要写入的文件路径。"
+        content:
+          type: string
+          description: "Full file content (not a patch)."
+          descriptions:
+            zh: "完整的文件内容（不是补丁）。"
+        ref:
+          type: string
+          description: "Revision the change is based on (default: the tip)."
+          descriptions:
+            zh: "修改所基于的版本（默认：最新）。"
+      required: [path, content]
+
+  - name: git-remove
+    description: >-
+      Stage a file deletion. Like git-write, this only affects the staging area until
+      git-stage-submit.
+    descriptions:
+      zh: "暂存删除文件。与 git-write 一样，在 git-stage-submit 之前只影响暂存区。"
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        path:
+          type: string
+          description: "File path to delete."
+          descriptions:
+            zh: "要删除的文件路径。"
+        ref:
+          type: string
+          description: "Revision the change is based on (default: the tip)."
+          descriptions:
+            zh: "修改所基于的版本（默认：最新）。"
+      required: [path]
+
+  - name: git-stage-status
+    description: >-
+      Show what is staged: each changed path marked added/modified/deleted, with line
+      counts. This is the "what am I about to submit" view.
+    descriptions:
+      zh: >-
+        显示暂存内容：每个变更路径标记为新增/修改/删除，并给出行数变化。
+        这是"我即将提交什么"的视图。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        ref:
+          type: string
+          description: "Base revision to compare against (default: the tip)."
+          descriptions:
+            zh: "用于比较的基准版本（默认：最新）。"
+
+  - name: git-stage-diff
+    description: >-
+      Show the staged change as a unified diff. Computed from stored content, so no
+      git binary and no sandbox is involved. Binary files are reported as such rather
+      than rendered.
+    descriptions:
+      zh: >-
+        以统一 diff 形式显示暂存修改。基于存储的内容计算，不涉及 git 二进制或沙箱。
+        二进制文件会被标注而不是渲染。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        ref:
+          type: string
+          description: "Base revision to compare against (default: the tip)."
+          descriptions:
+            zh: "用于比较的基准版本（默认：最新）。"
+
+  - name: git-stage-reset
+    description: >-
+      Discard staged changes. With a path, discards that one file's edit; without,
+      discards everything. The repository itself is never modified.
+    descriptions:
+      zh: >-
+        丢弃暂存修改。给出路径时只丢弃该文件的修改；不给则丢弃全部。
+        仓库本身永远不受影响。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        path:
+          type: string
+          description: "Only discard this path (omit to discard everything)."
+          descriptions:
+            zh: "只丢弃该路径（省略则丢弃全部）。"
+
+  - name: git-stage-submit
+    description: >-
+      Push the staged changes to a new branch and open a pull request, all from stored
+      content: no clone, no sandbox, no git binary. The branch name is generated per
+      submission so an existing review is never rewritten. The pull request body is
+      filled with a generated change summary.
+    descriptions:
+      zh: >-
+        把暂存修改推送到新分支并创建 MR，全程基于存储内容：不克隆、不用沙箱、
+        不依赖 git 二进制。分支名每次提交都重新生成，因此不会改写已有评审。
+        MR 正文会自动附带变更摘要。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL, e.g. https://git.example.com/owner/repo.git"
+          descriptions:
+            zh: "仓库地址，如 https://git.example.com/owner/repo.git"
+        title:
+          type: string
+          description: "Pull request title."
+          descriptions:
+            zh: "MR 标题。"
+        body:
+          type: string
+          description: "Pull request body (a change summary is appended)."
+          descriptions:
+            zh: "MR 正文（会自动附加变更摘要）。"
+        base:
+          type: string
+          description: "Target branch (default: the configured default branch)."
+          descriptions:
+            zh: "目标分支（默认：配置的默认分支）。"
+        branch:
+          type: string
+          description: "Head branch name (default: generated per submission)."
+          descriptions:
+            zh: "源分支名（默认：每次提交自动生成）。"
+        repo:
+          type: string
+          description: "Repository name as configured."
+          descriptions:
+            zh: "配置中的仓库名。"
+        ref:
+          type: string
+          description: "Base revision the change is based on (default: the tip)."
+          descriptions:
+            zh: "修改所基于的版本（默认：最新）。"
+      required: [remote, title]
+
 config:
   - name: sandboxes
     type: list

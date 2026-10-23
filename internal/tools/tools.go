@@ -13,6 +13,7 @@ import (
 	"github.com/easydev-org/easyagent-gitea-ext/internal/config"
 	"github.com/easydev-org/easyagent-gitea-ext/internal/i18n"
 	"github.com/easydev-org/easyagent-gitea-ext/internal/sandbox"
+	"github.com/easydev-org/easyagent-gitea-ext/internal/stage"
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 )
@@ -22,6 +23,12 @@ type Deps struct {
 	GetConfig func(name, session, tenant string) any
 	Locale    func(session, tenant string) string
 	Cache     *sandbox.ClientCache
+	// Stage, when set, enables the git-stage-* tools: they read and edit repository
+	// content WITHOUT a clone or a sandbox.
+	//
+	// nil leaves them out entirely rather than failing at call time: a deployment that
+	// has no easyvcs store should not advertise tools it cannot serve.
+	Stage *stage.Stage
 }
 
 // Handler is one tool implementation.
@@ -30,7 +37,7 @@ type Handler func(ctx context.Context, args map[string]any, session, tenant stri
 // Registry builds the git-* handler map.
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
-	return map[string]Handler{
+	out := map[string]Handler{
 		"git-clone":    t.clone,
 		"git-status":   t.status,
 		"git-log":      t.log,
@@ -56,6 +63,23 @@ func Registry(d Deps) map[string]Handler {
 		"git-remote-ls":   t.remoteLs,
 		"git-remote-show": t.remoteShow,
 	}
+
+	// Stage tools need a backing store; without one the names would be dead ends.
+	if d.Stage != nil {
+		for name, h := range map[string]Handler{
+			"git-tree":         t.stageTree,
+			"git-read":         t.stageRead,
+			"git-write":        t.stageWrite,
+			"git-remove":       t.stageRemove,
+			"git-stage-status": t.stageStatus,
+			"git-stage-diff":   t.stageDiff,
+			"git-stage-reset":  t.stageReset,
+			"git-stage-submit": t.stageSubmit,
+		} {
+			out[name] = h
+		}
+	}
+	return out
 }
 
 type toolset struct{ deps Deps }
