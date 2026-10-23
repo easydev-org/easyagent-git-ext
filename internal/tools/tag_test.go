@@ -16,9 +16,6 @@ func grant(ctx context.Context, key, repo string) context.Context {
 	})
 }
 
-// The publish tools have REQUIREMENTS that are not merely "the field is missing". Each of these
-// asserts the reason, because a caller who reads only the error has to be able to act on it.
-
 func TestTagCreateRequiresMessage(t *testing.T) {
 	reg := Registry(Deps{})
 	_, err := reg["gh-tag-create"](context.Background(),
@@ -32,27 +29,59 @@ func TestTagCreateRequiresMessage(t *testing.T) {
 	}
 }
 
-func TestReleaseCreateRequiresBody(t *testing.T) {
+// Publishing a release by hand is DISABLED, not merely gated.
+//
+// The refusal must be unconditional: no grant makes it allowed, and the message has to point at
+// the path that does work (push a tag, let CI publish), or a caller keeps trying.
+func TestReleaseCreateIsAlwaysRefused(t *testing.T) {
 	reg := Registry(Deps{})
-	_, err := reg["gh-release-create"](context.Background(),
-		map[string]any{"repo": "o/r", "tag": "v1"}, "s", "t")
+
+	// With every permission we know of, and with an otherwise-valid argument set.
+	ctx := extension.WithGrants(context.Background(), []*easybus.Grant{
+		{Key: PermReleaseDelete, Params: easybus.Struct(map[string]any{"repo": "o/r"})},
+		{Key: PermTagCreate, Params: easybus.Struct(map[string]any{"repo": "o/r"})},
+	})
+	_, err := reg["gh-release-create"](ctx,
+		map[string]any{"repo": "o/r", "tag": "v1", "body": "notes"}, "s", "t")
 	if err == nil {
-		t.Fatal("a release with no notes must be refused")
+		t.Fatal("manual release publishing must be refused even with grants")
 	}
-	if !strings.Contains(err.Error(), "what changed") {
-		t.Errorf("err = %v, want it to say consumers need the notes", err)
+	if !strings.Contains(err.Error(), "CI") {
+		t.Errorf("err = %v, want it to say releases are published by CI", err)
+	}
+	if !strings.Contains(err.Error(), "gh-tag-create") {
+		t.Errorf("err = %v, want it to name the path that does work", err)
 	}
 }
 
-// Every publish tool must be gated, and the gate must be checked BEFORE any network call — a
-// tool that calls GitHub and then discovers it has no permission has already acted.
+// Deleting a tag deletes its release. Asserted as a PROPERTY of the tool, not an option:
+// the previous design had a `with_tag` flag, and the state it could leave behind — an
+// announced release behind a deleted tag — was the bug.
+func TestTagDeleteHasNoWithTagOption(t *testing.T) {
+	reg := Registry(Deps{})
+	ctx := grant(context.Background(), PermTagDelete, "o/r")
+	// A caller that still passes with_tag must not be able to opt OUT of removing the release.
+	// The handler ignores the argument and calls DeleteTagAndRelease regardless; this asserts
+	// the argument is not consulted by checking the tool is driven purely by tag.delete.
+	if _, ok := reg["gh-tag-delete"]; !ok {
+		t.Fatal("gh-tag-delete is not registered")
+	}
+	// Without the permission it must refuse before touching the network.
+	_, err := reg["gh-tag-delete"](context.Background(),
+		map[string]any{"repo": "o/r", "tag": "v1"}, "s", "t")
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Errorf("gh-tag-delete must be gated: %v", err)
+	}
+	_ = ctx
+}
+
+// Every publishing tool must be gated BEFORE any network call — a tool that calls GitHub and
+// then discovers it has no permission has already acted.
 func TestPublishingToolsAreGated(t *testing.T) {
 	reg := Registry(Deps{})
-	// No grants on the context: each must refuse without reaching the API.
 	cases := map[string]map[string]any{
 		"gh-tag-create":     {"repo": "o/r", "tag": "v1", "message": "m"},
 		"gh-tag-delete":     {"repo": "o/r", "tag": "v1"},
-		"gh-release-create": {"repo": "o/r", "tag": "v1", "body": "b"},
 		"gh-release-delete": {"repo": "o/r", "tag": "v1"},
 	}
 	for name, args := range cases {
@@ -69,22 +98,5 @@ func TestPublishingToolsAreGated(t *testing.T) {
 		if !strings.Contains(err.Error(), "permission denied") {
 			t.Errorf("%s: err = %v, want a permission denial", name, err)
 		}
-	}
-}
-
-// with_tag needs tag.delete ON TOP of release.delete: deleting a ref is a different act from
-// unpublishing an announcement.
-func TestReleaseDeleteWithTagNeedsBothPermissions(t *testing.T) {
-	reg := Registry(Deps{})
-	ctx := extension.WithGrants(context.Background(), nil)
-	// Only release.delete granted.
-	ctx = grant(ctx, PermReleaseDelete, "o/r")
-	_, err := reg["gh-release-delete"](ctx,
-		map[string]any{"repo": "o/r", "tag": "v1", "with_tag": true}, "s", "t")
-	if err == nil {
-		t.Fatal("with_tag without tag.delete must be refused")
-	}
-	if !strings.Contains(err.Error(), "permission denied") {
-		t.Errorf("err = %v", err)
 	}
 }

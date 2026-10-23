@@ -126,19 +126,6 @@ permissions:
         descriptions:
           zh: 仓库（owner/name），或用 * 表示全部。
 
-  - key: release.create
-    label: Publish releases
-    descriptions:
-      zh: 发布 release
-    risk: write
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
   - key: release.delete
     # destructive: a published release may already have been acted on downstream.
     label: Delete releases
@@ -356,10 +343,11 @@ tools:
 
   - name: gh-tag-delete
     description: >-
-      Delete a tag. IRREVERSIBLE, and the version disappears for everyone already following
-      it.
+      Delete a tag AND its release. The two go together unconditionally: a release left behind
+      would still be announced at a tag nobody can check out. IRREVERSIBLE.
     descriptions:
-      zh: 删除标签。不可撤销，且已关注该版本的所有人都会失去它。
+      zh: >-
+        删除标签及其 release。两者无条件一起删除：留下的 release 仍会宣告一个无法检出的版本。不可撤销。
     input_schema:
       type: object
       properties:
@@ -376,60 +364,28 @@ tools:
 
   - name: gh-release-create
     description: >-
-      Publish a release. `body` is required: a release announces a version, and consumers need
-      to know what changed. Creates the tag at `ref` if it does not exist yet.
+      REFUSED. Releases are published by CI, not by hand — a hand-made release would announce a
+      version before the tests, build and artefact push have run. Push a tag with gh-tag-create
+      and let the repository's release workflow publish it.
     descriptions:
       zh: >-
-        发布 release。`body` 必填：release 是在宣告一个版本，消费者需要知道变了什么。若标签不存在，会在 `ref`
-        处创建。
+        已禁用。release 由 CI 发布，不可手动创建——手动发布会在测试、构建与产物推送之前就宣告版本。
+        用 gh-tag-create 打标签，由仓库的 release 工作流去发布。
+    # No parameters are declared: the handler refuses every call, so advertising an argument
+    # list would suggest there is a form of the call that works.
     input_schema:
       type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: 标签名。
-        ref:
-          type: string
-          description: Commit or branch the tag is created at, when it does not exist yet.
-          descriptions:
-            zh: 标签不存在时，在哪个提交或分支上创建。
-        name:
-          type: string
-          description: Release title. Defaults to the tag name.
-          descriptions:
-            zh: release 标题。默认与标签名相同。
-        body:
-          type: string
-          description: Required. The release notes.
-          descriptions:
-            zh: 必填。发布说明。
-        draft:
-          type: boolean
-          description: Save as a draft instead of publishing.
-          descriptions:
-            zh: 保存为草稿而不发布。
-        prerelease:
-          type: boolean
-          description: Mark as a prerelease.
-          descriptions:
-            zh: 标记为预发布。
-      required: [repo, tag, body]
-    requires: [release.create]
+      properties: {}
+    # No permission either. A permission is "what you must hold to do this", and nothing is
+    # sufficient to do this — the refusal is unconditional.
 
   - name: gh-release-delete
     description: >-
-      Delete a published release. The tag and the release are SEPARATE objects on GitHub, so
-      deleting a tag leaves the release behind. With `with_tag`, both go — that needs
-      tag.delete as well.
+      Unpublish a release, keeping the tag. For "remove this version entirely" use
+      gh-tag-delete, which always removes both.
     descriptions:
       zh: >-
-        删除已发布的 release。在 GitHub 上标签和 release 是两个独立对象，所以只删标签会留下 release。
-        传 `with_tag` 则两者一起删除——这还需要 tag.delete 权限。
+        撤销 release 的发布，保留标签。要「彻底删除这个版本」请用 gh-tag-delete，它总是两者一起删。
     input_schema:
       type: object
       properties:
@@ -441,11 +397,6 @@ tools:
           type: string
           descriptions:
             zh: release 所在的标签名。
-        with_tag:
-          type: boolean
-          description: Also delete the tag. Requires tag.delete.
-          descriptions:
-            zh: 同时删除标签。需要 tag.delete 权限。
       required: [repo, tag]
     requires: [release.delete]
 

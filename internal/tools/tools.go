@@ -46,8 +46,9 @@ const (
 	PermTagCreate = "tag.create"
 	// PermTagDelete deletes a tag. Destructive: a released version disappears with it.
 	PermTagDelete = "tag.delete"
-	// PermReleaseCreate publishes releases.
-	PermReleaseCreate = "release.create"
+	// NOTE: there is deliberately NO release.create permission. Releases are published by CI,
+	// not by a caller, so no grant would make the operation allowed — declaring a key would only
+	// invite somebody to ask for one.
 	// PermReleaseDelete removes a published release. Destructive: consumers may already have
 	// acted on the announcement.
 	PermReleaseDelete = "release.delete"
@@ -66,7 +67,6 @@ var requireMap = map[string][]string{
 	"gh-repo-delete":    {PermRepoDelete},
 	"gh-tag-create":     {PermTagCreate},
 	"gh-tag-delete":     {PermTagDelete},
-	"gh-release-create": {PermReleaseCreate},
 	"gh-release-delete": {PermReleaseDelete},
 }
 

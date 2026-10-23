@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 
 	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
@@ -96,70 +97,56 @@ func (t *toolset) tagDelete(ctx context.Context, args map[string]any, session, t
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := c.DeleteTag(ctx, name); err != nil {
-		return extension.ToolResultData{}, errFailed("%s: %v", repo, err)
-	}
-	return extension.ToolResultData{Content: fmt.Sprintf("deleted tag %s", name)}, nil
-}
 
-// releaseCreate publishes a release — the event a downstream subscription waits for.
-func (t *toolset) releaseCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	repo, err := required(args, "repo")
-	if err != nil {
-		return extension.ToolResultData{}, err
+	// Deleting a tag deletes its release too, ALWAYS — never as an option.
+	//
+	// They are separate objects on GitHub, so removing only the ref left a release pointing at
+	// a tag that no longer existed: still announced, impossible to check out, and invisible
+	// until somebody tried to download it. A tool that can produce that state is a tool that
+	// eventually does, so the two go together.
+	//
+	// The release is removed first: deleting the tag first would orphan it and make it harder
+	// to find.
+	releaseDeleted, derr := c.DeleteTagAndRelease(ctx, name)
+	if derr != nil {
+		return extension.ToolResultData{}, errFailed("%s: %v", repo, derr)
 	}
-	tag, err := required(args, "tag")
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	body, err := required(args, "body")
-	if err != nil {
-		// A release with no notes announces a version and says nothing about it. Forcing the
-		// body keeps a publish from being a content-free event that nobody downstream can act
-		// on.
-		return extension.ToolResultData{}, errArg(
-			`"body" is required: a release announces a version, and downstream consumers need to know what changed`)
-	}
-	if err := t.requireRepo(ctx, PermReleaseCreate, repo); err != nil {
-		return extension.ToolResultData{}, err
-	}
-	c, _, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	rel, err := c.CreateRelease(ctx, ghclient.CreateReleaseOptions{
-		TagName: tag,
-		Target:  argStr(args, "ref"),
-		Name:    argStr(args, "name"),
-		Body:    body,
-		Draft:   argBool(args, "draft"),
-		// Prerelease is a separate flag, not inferred from the tag name: guessing from a
-		// "-rc" suffix would mark a project's own naming convention as authoritative.
-		Prerelease: argBool(args, "prerelease"),
-	})
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s: %v", repo, err)
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "published release %s\n", rel.TagName)
-	fmt.Fprintf(&b, "%s\n", rel.HTMLURL)
-	if rel.Draft {
-		b.WriteString("(draft — not visible until published)\n")
-	}
-	if rel.Prerelease {
-		b.WriteString("(prerelease)\n")
+	if releaseDeleted {
+		return extension.ToolResultData{
+			Content: fmt.Sprintf("deleted tag %s and its release", name),
+			Data:    map[string]any{"tag": name, "release_deleted": true},
+		}, nil
 	}
 	return extension.ToolResultData{
-		Content: b.String(),
-		Data:    map[string]any{"release": rel},
+		Content: fmt.Sprintf("deleted tag %s (no release was published at it)", name),
+		Data:    map[string]any{"tag": name, "release_deleted": false},
 	}, nil
 }
 
-// releaseDelete removes a published release, and optionally the tag with it.
+// releaseCreate REFUSES, on purpose.
 //
-// The two are SEPARATE objects on GitHub. `gh-tag-delete` removes only the ref, which leaves the
-// release behind pointing at a tag that no longer exists — a version that is still announced but
-// can no longer be checked out. `with_tag` is the "remove this version entirely" operation.
+// Publishing a release is not a thing this extension may do by hand. A release is the event
+// every downstream consumer reacts to, and a hand-made one bypasses whatever the repository's
+// CI does first: the tests, the build, the artefact push. The version would be announced as
+// real while the thing it announces was never produced.
+//
+// So releases are created by CI. This handler exists rather than the tool being absent because
+// a caller that expects the name should be told WHY it is refused, instead of finding an
+// unknown tool and guessing.
+func (t *toolset) releaseCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	return extension.ToolResultData{}, &extension.TypedError{
+		Code: easybus.ToolResultErrorCodePermissionDenied,
+		Message: "publishing a release by hand is disabled: releases must be created by CI, so that " +
+			"the version is only announced after the tests, build and artefact push have succeeded. " +
+			"Push a tag (gh-tag-create) and let the repository's release workflow publish it.",
+	}
+}
+
+// releaseDelete unpublishes a release, leaving the tag.
+//
+// This is the narrow operation: withdraw the announcement while keeping the version. For
+// "remove this version entirely" use gh-tag-delete, which always removes both — so there is no
+// way to leave a release orphaned behind a deleted tag.
 func (t *toolset) releaseDelete(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
 	repo, err := required(args, "repo")
 	if err != nil {
@@ -176,25 +163,6 @@ func (t *toolset) releaseDelete(ctx context.Context, args map[string]any, sessio
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-
-	if argBool(args, "with_tag") {
-		// Removing the tag needs its own permission: deleting a ref is a different act from
-		// unpublishing an announcement, and a caller trusted with one is not automatically
-		// trusted with the other.
-		if err := t.requireRepo(ctx, PermTagDelete, repo); err != nil {
-			return extension.ToolResultData{}, err
-		}
-		deleted, derr := c.DeleteTagAndRelease(ctx, tag)
-		if derr != nil {
-			return extension.ToolResultData{}, errFailed("%s@%s: %v", repo, tag, derr)
-		}
-		msg := fmt.Sprintf("deleted release %s", tag)
-		if deleted {
-			msg += " and its tag"
-		}
-		return extension.ToolResultData{Content: msg}, nil
-	}
-
 	if err := c.DeleteRelease(ctx, tag); err != nil {
 		return extension.ToolResultData{}, errFailed("%s@%s: %v", repo, tag, err)
 	}
