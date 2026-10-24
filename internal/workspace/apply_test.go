@@ -1,14 +1,16 @@
-package stage
+package workspace
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
 
 // fakeWS is an in-memory FileStore.
 //
-// Deliberately NOT a real Workspace: the point of these tests is the patch logic, so they must
-// not need an easyvcs store. The narrow FileStore interface is what makes that possible.
+// Deliberately NOT a real Workspace: these tests are about the patch logic, so they must not
+// need a directory or a git repository. The narrow FileStore interface is what makes that
+// possible.
 type fakeWS struct {
 	files map[string][]byte
 	gone  map[string]bool
@@ -22,29 +24,37 @@ func newWS(files map[string]string) *fakeWS {
 	return w
 }
 
-func (w *fakeWS) Read(path string) ([]byte, bool, error) {
+func (w *fakeWS) ReadFile(path string) ([]byte, error) {
 	if w.gone[path] {
-		return nil, false, nil
+		return nil, errNotExist
 	}
 	c, ok := w.files[path]
-	return c, ok, nil
+	if !ok {
+		return nil, errNotExist
+	}
+	return c, nil
 }
 
-func (w *fakeWS) Write(path string, content []byte) {
+func (w *fakeWS) WriteFile(path string, content []byte) error {
 	w.files[path] = content
 	delete(w.gone, path)
+	return nil
 }
 
-func (w *fakeWS) Remove(path string) {
+func (w *fakeWS) RemoveFile(path string) error {
 	delete(w.files, path)
 	w.gone[path] = true
+	return nil
 }
+
+// errNotExist stands in for a missing file; the patch logic only cares that it failed.
+var errNotExist = fmt.Errorf("does not exist")
 
 func (w *fakeWS) content(p string) string { return string(w.files[p]) }
 
 func TestApplyPatchAdd(t *testing.T) {
 	w := newWS(nil)
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** Add File: a.go\n+package a\n*** End Patch\n"); err != nil {
+	if _, err := ApplyPatchTo(w, "*** Begin Patch\n*** Add File: a.go\n+package a\n*** End Patch\n"); err != nil {
 		t.Fatal(err)
 	}
 	if got := w.content("a.go"); got != "package a\n" {
@@ -56,7 +66,7 @@ func TestApplyPatchUpdate(t *testing.T) {
 	w := newWS(map[string]string{"a.txt": "one\ntwo\n"})
 	// No anchor: the context line is unique, so no disambiguation is needed.
 	p := "*** Begin Patch\n*** Update File: a.txt\n@@\n one\n-two\n+TWO\n*** End Patch\n"
-	if _, err := ApplyPatch(w, p); err != nil {
+	if _, err := ApplyPatchTo(w, p); err != nil {
 		t.Fatal(err)
 	}
 	if got := w.content("a.txt"); got != "one\nTWO\n" {
@@ -66,7 +76,7 @@ func TestApplyPatchUpdate(t *testing.T) {
 
 func TestApplyPatchDelete(t *testing.T) {
 	w := newWS(map[string]string{"gone.txt": "x\n"})
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** Delete File: gone.txt\n*** End Patch\n"); err != nil {
+	if _, err := ApplyPatchTo(w, "*** Begin Patch\n*** Delete File: gone.txt\n*** End Patch\n"); err != nil {
 		t.Fatal(err)
 	}
 	if !w.gone["gone.txt"] {
@@ -82,7 +92,7 @@ func TestApplyPatchMultipleOps(t *testing.T) {
 		"*** Update File: keep.txt\n@@\n-k\n+K\n" +
 		"*** Delete File: old.txt\n" +
 		"*** End Patch\n"
-	if _, err := ApplyPatch(w, p); err != nil {
+	if _, err := ApplyPatchTo(w, p); err != nil {
 		t.Fatal(err)
 	}
 	if w.content("new.txt") != "n\n" {
@@ -106,7 +116,7 @@ func TestApplyPatchIsAtomic(t *testing.T) {
 		"*** Add File: good.txt\n+g\n" +
 		"*** Update File: present.txt\n@@\n-WRONG\n+x\n" + // does not match
 		"*** End Patch\n"
-	if _, err := ApplyPatch(w, p); err == nil {
+	if _, err := ApplyPatchTo(w, p); err == nil {
 		t.Fatal("expected the mismatched hunk to fail")
 	}
 	if _, ok := w.files["good.txt"]; ok {
@@ -121,7 +131,7 @@ func TestApplyPatchIsAtomic(t *testing.T) {
 // replacing the file would discard content the patch never mentioned.
 func TestApplyPatchAddRefusesExisting(t *testing.T) {
 	w := newWS(map[string]string{"a.txt": "original\n"})
-	_, err := ApplyPatch(w, "*** Begin Patch\n*** Add File: a.txt\n+replacement\n*** End Patch\n")
+	_, err := ApplyPatchTo(w, "*** Begin Patch\n*** Add File: a.txt\n+replacement\n*** End Patch\n")
 	if err == nil {
 		t.Fatal("add over an existing file must be refused")
 	}
@@ -137,32 +147,34 @@ func TestApplyPatchAddRefusesExisting(t *testing.T) {
 // stale view of the repository.
 func TestApplyPatchRefusesMissingPaths(t *testing.T) {
 	w := newWS(nil)
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** Update File: nope.txt\n@@\n-a\n+b\n*** End Patch\n"); err == nil {
+	if _, err := ApplyPatchTo(w, "*** Begin Patch\n*** Update File: nope.txt\n@@\n-a\n+b\n*** End Patch\n"); err == nil {
 		t.Error("update of a missing file must be refused")
 	}
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** Delete File: nope.txt\n*** End Patch\n"); err == nil {
+	if _, err := ApplyPatchTo(w, "*** Begin Patch\n*** Delete File: nope.txt\n*** End Patch\n"); err == nil {
 		t.Error("delete of a missing file must be refused")
 	}
 }
 
 // A path may not escape the workspace.
 func TestApplyPatchRefusesEscapingPaths(t *testing.T) {
-	w := newWS(nil)
+	// A REAL Workspace: the escape check lives in its safePath, and an in-memory store has no
+	// filesystem to escape from. Testing it through the fake would prove nothing.
+	w := &Workspace{Dir: t.TempDir()}
 	for _, bad := range []string{"/etc/passwd", "../outside.txt", "a/../../x"} {
 		p := "*** Begin Patch\n*** Add File: " + bad + "\n+x\n*** End Patch\n"
-		if _, err := ApplyPatch(w, p); err == nil {
+		if _, err := w.ApplyPatch(p); err == nil {
 			t.Errorf("path %q should have been refused", bad)
 		}
 	}
 	// A name that merely CONTAINS ".." is legitimate and must be allowed.
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** Add File: a..b.txt\n+x\n*** End Patch\n"); err != nil {
+	if _, err := w.ApplyPatch("*** Begin Patch\n*** Add File: a..b.txt\n+x\n*** End Patch\n"); err != nil {
 		t.Errorf("a..b.txt should be allowed: %v", err)
 	}
 }
 
 func TestApplyPatchEmpty(t *testing.T) {
 	w := newWS(nil)
-	if _, err := ApplyPatch(w, "*** Begin Patch\n*** End Patch\n"); err == nil {
+	if _, err := ApplyPatchTo(w, "*** Begin Patch\n*** End Patch\n"); err == nil {
 		t.Error("an empty patch is a mistake, not a no-op")
 	}
 }

@@ -7,15 +7,15 @@ import (
 	_ "embed"
 	"log/slog"
 	"os"
+	"time"
 
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
-	easyvcsstore "github.com/easylab-platform/easyvcs/store"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/stage"
 	"github.com/easydev-org/easyagent-github-ext/internal/tools"
+	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 )
 
 //go:embed manifest.yaml
@@ -37,34 +37,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The staging area needs an easyvcs database. It is opened eagerly so a bad DSN fails HERE,
-	// with a clear message, rather than inside the first user's tool call — and the extension
-	// refuses to start without it, because every write tool depends on it and advertising tools
-	// that cannot work is worse than not starting.
-	dsn := envOr("EASYVCS_DSN", "")
-	if dsn == "" {
-		log.Error("EASYVCS_DSN is required: the staging area holds the edits a pull request is built from")
-		os.Exit(1)
+	// Workspaces are plain directories on this pod's disk. No database: a workspace is a git
+	// checkout, and git already knows how to be one.
+	//
+	// The root is deliberately on LOCAL disk (not a shared volume): a checkout is a session's
+	// private scratchpad, and two pods sharing one directory would fight over the index.
+	root := envOr("WORKSPACE_ROOT", "/tmp/workspaces")
+	idle := 2 * time.Hour
+	if v := envOr("WORKSPACE_IDLE_TTL", ""); v != "" {
+		if d, derr := time.ParseDuration(v); derr == nil {
+			idle = d
+		}
 	}
-	kind := envOr("EASYVCS_DRIVER", "postgres")
-	cs, err := easyvcsstore.OpenDriver(easyvcsstore.DriverConfig{Kind: kind, DSN: dsn})
+	wsMgr, err := workspace.NewManager(root, idle)
 	if err != nil {
-		log.Error("easyvcs open failed", "driver", kind, "err", err)
+		log.Error("workspace root", "root", root, "err", err)
 		os.Exit(1)
 	}
-	if err := cs.Init(); err != nil {
-		log.Error("easyvcs init failed", "err", err)
-		os.Exit(1)
-	}
-	stageArea := stage.New(cs, func(tenant string) easyvcsstore.RepoRef {
-		// One namespace per tenant: the content a tenant stages against is its own mirror.
-		return easyvcsstore.RepoRef{Name: "tenant-" + tenant}
-	})
-	log.Info("staging enabled", "driver", kind)
+	log.Info("workspaces enabled", "root", root, "idle_ttl", idle.String())
 
 	var ext *extension.Extension
 	handlers := tools.Registry(tools.Deps{
-		Stage: stageArea,
+		Workspaces: wsMgr,
 		GetConfig: func(name, session, tenant string) any {
 			if ext == nil {
 				return nil
@@ -109,6 +103,22 @@ func main() {
 	if err := extension.Serve(ext, extension.ServeOptions{
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("listening", "nats", natsURL)
+			// Reap abandoned workspaces. Without this a long-lived pod fills its disk with
+			// checkouts nobody will come back to.
+			go func() {
+				t := time.NewTicker(15 * time.Minute)
+				defer t.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case now := <-t.C:
+						if n := wsMgr.SweepIdle(now); n > 0 {
+							log.Info("swept idle workspaces", "removed", n)
+						}
+					}
+				}
+			}()
 		},
 	}); err != nil {
 		log.Error("serve failed", "err", err)

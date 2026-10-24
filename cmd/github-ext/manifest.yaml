@@ -127,74 +127,287 @@ permissions:
           zh: 仓库（owner/name），或用 * 表示全部。
 
 tools:
-  # ── reading ──────────────────────────────────────────────────────────────────
-  - name: gh-info
+  # ── local git (a workspace on disk; no GitHub call, no token) ────────────────
+  - name: git-clone
     description: >-
-      Repository metadata: default branch, description, language, licence, stars. Works
-      without a token on a public repository.
+      Clone a repository into a new WORKSPACE and return its id. This is the only way to get a
+      workspace, and every other git-* tool needs one. The id is random and belongs to this
+      session; it is not derived from the repository and cannot be guessed.
     descriptions:
-      zh: 仓库元信息：默认分支、描述、语言、许可证、star 数。公开仓库无需令牌。
+      zh: >-
+        把仓库克隆到一个新的「工作区」并返回其 id。这是获取工作区的唯一途径，其他所有 git-* 工具都需要它。
+        id 是随机的、归属本 session，不由仓库名推导，无法被猜到。
     input_schema:
       type: object
       properties:
         repo:
           type: string
-          description: Repository as owner/name (or a full URL).
+          description: Repository as owner/name.
           descriptions:
-            zh: 仓库（owner/name 或完整 URL）。
-      required: [repo]
-
-  - name: gh-tree
-    description: >-
-      List every file path at a ref in one call. Files only — directories add no information
-      a caller does not already have from the paths.
-    descriptions:
-      zh: 一次调用列出某个 ref 下的全部文件路径。只列文件——目录不会带来额外信息。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
+            zh: 仓库（owner/name）。
         ref:
           type: string
           description: Branch, tag or commit. Empty = the default branch.
           descriptions:
             zh: 分支、标签或提交。留空表示默认分支。
+        depth:
+          type: integer
+          description: >-
+            Clone depth. 0 (default) keeps the full history, so questions about older commits
+            have real answers; 1 is faster but forgets the past.
+          descriptions:
+            zh: 克隆深度。0（默认）保留完整历史，这样对旧提交的疑问才有真实答案；1 更快但会丢弃历史。
       required: [repo]
 
-  - name: gh-read
-    description: >-
-      Read one file, with line numbers. The numbers are for reading a patch target, not part
-      of the content.
+  - name: git-workspace
+    description: List this session's workspaces, or close one with `close`.
     descriptions:
-      zh: 读取单个文件，带行号。行号用于定位要修改的位置，不属于文件内容。
+      zh: 列出本 session 的工作区；传 `close` 则关闭指定工作区。
+    input_schema:
+      type: object
+      properties:
+        close:
+          type: string
+          description: Workspace id to delete.
+          descriptions:
+            zh: 要删除的工作区 id。
+
+  - name: git-status
+    description: What changed in the workspace, against the checked-out commit.
+    descriptions:
+      zh: 工作区相对当前检出的提交有哪些改动。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+      required: [workspace]
+
+  - name: git-patch
+    description: >-
+      Edit files in the workspace with a patch. THE ONLY EDITING TOOL. Format: "*** Begin
+      Patch" / "*** Add File: path" (+lines) / "*** Update File: path" (@@ anchor, then ' '
+      context, '-' removed, '+' added) / "*** Delete File: path" / "*** End Patch". Applied
+      whole or not at all: a failing hunk leaves the tree untouched.
+    descriptions:
+      zh: >-
+        用补丁修改工作区文件。这是唯一的编辑工具。格式：Begin Patch / Add File（每行前缀 +）/
+        Update File（@@ 锚点，随后空格上下文、减号删除、加号新增）/ Delete File / End Patch。
+        整份生效或整份失败：任一 hunk 失败则工作区不变。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        patch:
+          type: string
+          descriptions:
+            zh: 补丁文本。
+      required: [workspace, patch]
+
+  - name: git-read
+    description: Read a file from the workspace, with line numbers.
+    descriptions:
+      zh: 读取工作区中的文件，带行号。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        path:
+          type: string
+          description: Path relative to the workspace root.
+          descriptions:
+            zh: 相对工作区根目录的路径。
+      required: [workspace, path]
+
+  - name: git-list
+    description: List every file in the workspace.
+    descriptions:
+      zh: 列出工作区中的全部文件。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+      required: [workspace]
+
+  - name: git-log
+    description: >-
+      The workspace's commit history — real authors and real commit dates, because this is a
+      real git checkout.
+    descriptions:
+      zh: 工作区的提交历史——真实的作者与提交时间，因为这就是一个真实的 git 检出。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        limit:
+          type: integer
+          descriptions:
+            zh: 最多返回条数（默认 20）。
+      required: [workspace]
+
+  - name: git-diff
+    description: >-
+      The workspace's changes as a unified diff. Pass `path` to narrow it to one file. Capped at
+      2000 lines, and says so when the cap applies.
+    descriptions:
+      zh: 工作区的改动，unified diff 格式。传 `path` 可只看单个文件。上限 2000 行，触发时会说明。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        path:
+          type: string
+          description: Limit the diff to this file.
+          descriptions:
+            zh: 只看这个文件。
+        staged:
+          type: boolean
+          description: Compare against the index instead of the working tree.
+          descriptions:
+            zh: 与索引比较，而不是与工作区比较。
+      required: [workspace]
+
+  - name: git-blame
+    description: >-
+      Who last changed each line of a file, and when. Bounded to a line range (default 200
+      lines) because an unbounded blame of a large file buries the answer.
+    descriptions:
+      zh: >-
+        文件中每一行最后是谁、什么时候改的。限定行范围（默认 200 行），因为无限制地 blame 大文件会把答案淹没。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        path:
+          type: string
+          descriptions:
+            zh: 文件路径。
+        from:
+          type: integer
+          description: First line (1-based).
+          descriptions:
+            zh: 起始行（从 1 开始）。
+        to:
+          type: integer
+          description: Last line.
+          descriptions:
+            zh: 结束行。
+      required: [workspace, path]
+
+  - name: git-commit
+    description: >-
+      Commit the workspace's changes LOCALLY. Does not push, and may be called repeatedly — a
+      change is often several commits. Publish with gh-pr-create.
+    descriptions:
+      zh: >-
+        在本地提交工作区的改动。不推送，可多次调用——一个改动常常需要多个提交。发布用 gh-pr-create。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        message:
+          type: string
+          descriptions:
+            zh: 提交信息。
+      required: [workspace, message]
+
+  - name: git-pull
+    description: >-
+      Fast-forward the workspace to its remote. FAST-FORWARD ONLY: if local commits and the
+      remote have diverged, it reports that and changes nothing, because only the caller can
+      decide which to keep.
+    descriptions:
+      zh: >-
+        将工作区快进到远端。只允许 fast-forward：若本地提交与远端已分叉，会报告并保持原样，
+        因为只有调用者能决定保留哪一边。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        branch:
+          type: string
+          description: Branch to fast-forward from. Empty = the current branch.
+          descriptions:
+            zh: 从哪里快进。留空表示当前分支。
+      required: [workspace]
+
+  - name: git-reset
+    description: >-
+      Discard working-tree changes, restoring files to the checked-out commit. With `hard` it
+      also deletes untracked files — and a hard reset of the WHOLE workspace additionally needs
+      `confirm`, because that is the one operation here that destroys work never committed.
+    descriptions:
+      zh: >-
+        丢弃工作区改动，把文件恢复到检出的提交。传 `hard` 还会删除未跟踪文件——而对整个工作区做 hard reset
+        还需要 `confirm`，因为这是唯一会销毁未提交工作的操作。
+    input_schema:
+      type: object
+      properties:
+        workspace:
+          type: string
+          descriptions:
+            zh: 工作区 id。
+        path:
+          type: string
+          description: Limit the reset to this file.
+          descriptions:
+            zh: 只重置这个文件。
+        hard:
+          type: boolean
+          description: Also delete untracked files.
+          descriptions:
+            zh: 同时删除未跟踪文件。
+        confirm:
+          type: boolean
+          description: Required for a hard reset of the whole workspace.
+          descriptions:
+            zh: 对整个工作区做 hard reset 时必需。
+      required: [workspace]
+
+  # ── github platform ─────────────────────────────────────────────────────────
+  - name: gh-info
+    description: Repository metadata. Works without a token on a public repository.
+    descriptions:
+      zh: 仓库元信息。公开仓库无需令牌。
     input_schema:
       type: object
       properties:
         repo:
           type: string
           descriptions:
-            zh: 仓库。
-        path:
-          type: string
-          descriptions:
-            zh: 文件路径。
-        ref:
-          type: string
-          descriptions:
-            zh: 分支/标签/提交。
-      required: [repo, path]
+            zh: 仓库（owner/name）。
+      required: [repo]
 
-  # ── account ──────────────────────────────────────────────────────────────────
   - name: gh-whoami
-    description: >-
-      The token's identity and what it may do: classic scopes, or a note that it is a
-      fine-grained token (whose permissions are per-repository and not reported as scopes).
-      Also reports the remaining request budget.
+    description: The token's identity, its scopes, and the remaining request budget.
     descriptions:
-      zh: 令牌身份与权限：经典令牌的 scope，或提示这是细粒度令牌（其权限按仓库划分，不体现为 scope）。同时报告剩余请求配额。
+      zh: 令牌身份、权限范围与剩余请求配额。
     input_schema:
       type: object
       properties: {}
@@ -208,11 +421,9 @@ tools:
       properties: {}
 
   - name: gh-repos
-    description: >-
-      Repositories the caller can see. Pass `org` for one organization's repositories,
-      otherwise everything the caller can reach.
+    description: Repositories the caller can see, optionally for one organization.
     descriptions:
-      zh: 当前身份可见的仓库。传 `org` 则列出该组织的仓库，否则列出全部可达仓库。
+      zh: 当前身份可见的仓库，可限定某个组织。
     input_schema:
       type: object
       properties:
@@ -227,16 +438,13 @@ tools:
             zh: all | public | private | forks | sources | member
         visibility:
           type: string
-          description: all | public | private (when no org is given)
           descriptions:
-            zh: all | public | private（未指定组织时）
+            zh: all | public | private
 
   - name: gh-releases
-    description: >-
-      Releases for a repository, newest first. With `tag`, that one release including its
-      notes and assets.
+    description: Releases for a repository; with `tag`, that one release.
     descriptions:
-      zh: 仓库的 release 列表，最新的在前。传 `tag` 则返回该 release 的详情（含说明与附件）。
+      zh: 仓库的 release 列表；传 `tag` 则返回该 release 的详情。
     input_schema:
       type: object
       properties:
@@ -255,11 +463,9 @@ tools:
       required: [repo]
 
   - name: gh-packages
-    description: >-
-      An organization's packages. Without `package`, lists them; with it, lists that
-      package's version tags.
+    description: An organization's packages, or one package's versions.
     descriptions:
-      zh: 组织的软件包。不传 `package` 列出全部；传则列出该包的版本标签。
+      zh: 组织的软件包，或某个包的版本列表。
     input_schema:
       type: object
       properties:
@@ -269,7 +475,6 @@ tools:
             zh: 组织名。
         kind:
           type: string
-          description: container | npm | maven | rubygems | nuget (default container)
           descriptions:
             zh: container | npm | maven | rubygems | nuget（默认 container）
         package:
@@ -278,17 +483,12 @@ tools:
             zh: 包名。
       required: [org]
 
-  # ── repository administration ────────────────────────────────────────────────
   - name: gh-tag-create
     description: >-
-      Create an ANNOTATED tag at a commit. `message` is required: an annotated tag is a
-      published event with a description, and a release is built on one — a bare ref would be a
-      version marker whose meaning lives only in whoever made it. Creating a tag is what a
-      downstream channel subscription reacts to.
+      Create an ANNOTATED tag. `message` is required: an annotated tag is a published event
+      with a description, and a release is built on one.
     descriptions:
-      zh: >-
-        在某个提交上创建附注标签。`message` 必填：附注标签是带说明的发布事件，release 也建立在它之上——
-        裸 ref 只是一个含义仅存在于创建者心里的版本标记。打标签正是下游频道订阅所响应的事件。
+      zh: 创建附注标签。`message` 必填：附注标签是带说明的发布事件，release 也建立在它之上。
     input_schema:
       type: object
       properties:
@@ -298,7 +498,6 @@ tools:
             zh: 仓库。
         tag:
           type: string
-          description: Tag name, e.g. v1.2.3.
           descriptions:
             zh: 标签名，例如 v1.2.3。
         ref:
@@ -330,15 +529,10 @@ tools:
   - name: gh-tag-show
     description: >-
       One tag's annotation: the message, who tagged it and when. A separate call because
-      GitHub's tag LIST does not include the message — reading it costs one request per tag,
-      so folding it into the list would make listing a large repository exceed the anonymous
-      rate limit. A lightweight tag is reported as having no annotation rather than an empty
-      one.
+      GitHub's tag LIST does not include the message.
     descriptions:
       zh: >-
-        查看单个标签的附注：说明、打标签的人与时间。之所以单独一个工具，是因为 GitHub 的标签列表不含附注——
-        读取它每个标签要多一次请求，塞进列表会让大仓库的列举直接超出匿名速率限制。
-        轻量标签会明确报告为「无附注」，而不是返回空字符串。
+        单个标签的附注：说明、打标签的人与时间。之所以单独一个工具，是因为 GitHub 的标签列表不含附注。
     input_schema:
       type: object
       properties:
@@ -348,9 +542,8 @@ tools:
             zh: 仓库。
         tag:
           type: string
-          description: Tag name, e.g. v1.2.3.
           descriptions:
-            zh: 标签名，例如 v1.2.3。
+            zh: 标签名。
       required: [repo, tag]
 
   - name: gh-tag-delete
@@ -358,8 +551,7 @@ tools:
       Delete a tag AND its release. The two go together unconditionally: a release left behind
       would still be announced at a tag nobody can check out. IRREVERSIBLE.
     descriptions:
-      zh: >-
-        删除标签及其 release。两者无条件一起删除：留下的 release 仍会宣告一个无法检出的版本。不可撤销。
+      zh: 删除标签及其 release。两者无条件一起删除：留下的 release 仍会宣告一个无法检出的版本。不可撤销。
     input_schema:
       type: object
       properties:
@@ -375,12 +567,9 @@ tools:
     requires: [tag.delete]
 
   - name: gh-repo-create
-    description: >-
-      Create a repository, under `org` or under the authenticated user. `auto_init` creates
-      an initial commit, which is the difference between a repository that can be pushed to
-      immediately and one that needs a first push to exist at all.
+    description: Create a repository, under `org` or the authenticated user.
     descriptions:
-      zh: 创建仓库（`org` 下或当前用户名下）。`auto_init` 会创建首个提交——这决定了仓库能否立刻推送。
+      zh: 创建仓库（`org` 下或当前用户名下）。
     input_schema:
       type: object
       properties:
@@ -408,11 +597,9 @@ tools:
     requires: [repo.create]
 
   - name: gh-repo-rename
-    description: >-
-      Rename a repository. GitHub redirects the old name, but anything caching the slug should
-      refresh it — the new name is returned.
+    description: Rename a repository.
     descriptions:
-      zh: 重命名仓库。GitHub 会重定向旧名，但缓存了 slug 的地方应更新——工具会返回新名称。
+      zh: 重命名仓库。
     input_schema:
       type: object
       properties:
@@ -428,10 +615,10 @@ tools:
 
   - name: gh-repo-delete
     description: >-
-      Delete a repository. IRREVERSIBLE. Requires `confirm` to equal the repository slug, so a
-      wrong slug cannot delete the wrong repository.
+      Delete a repository. IRREVERSIBLE. `confirm` must equal the repository slug, so a wrong
+      slug cannot delete the wrong repository.
     descriptions:
-      zh: 删除仓库。不可撤销。要求 `confirm` 等于仓库全名，避免笔误删错仓库。
+      zh: 删除仓库。不可撤销。`confirm` 必须等于仓库全名，避免笔误删错仓库。
     input_schema:
       type: object
       properties:
@@ -441,103 +628,31 @@ tools:
             zh: 要删除的仓库。
         confirm:
           type: string
-          description: Must equal `repo`, or the call is refused.
           descriptions:
-            zh: 必须与 `repo` 完全相同，否则拒绝执行。
+            zh: 必须与 `repo` 完全相同。
       required: [repo, confirm]
     requires: [repo.delete]
 
-  # ── staging area ─────────────────────────────────────────────────────────────
-  - name: gh-stage-patch
-    description: >-
-      Edit the staging area with a patch. THIS IS THE ONLY EDITING TOOL — there is no
-      separate write/delete/move set, because one way to edit means one way to get it wrong.
-      Format: "*** Begin Patch" / "*** Add File: path" (+lines) / "*** Update File: path"
-      (@@ anchor, then ' ' context, '-' removed, '+' added) / "*** Delete File: path" /
-      "*** End Patch". Applied whole or not at all: a failing hunk leaves the stage untouched.
-    descriptions:
-      zh: >-
-        用补丁修改暂存区。这是唯一的编辑工具——没有单独的写入/删除/移动，因为只有一种改法才只有一种出错方式。
-        格式见英文说明：Begin Patch 与 End Patch 之间，每个文件以 Add File、Update File 或 Delete File 开头；
-        Update 的每个 hunk 以 @@ 锚点开始，随后是空格前缀的上下文、减号前缀的删除、加号前缀的新增。
-        整份生效或整份失败：任一 hunk 失败则暂存区不变。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        patch:
-          type: string
-          descriptions:
-            zh: 补丁文本。
-        base:
-          type: string
-          description: Branch to stage against. Empty = the default branch.
-          descriptions:
-            zh: 基于哪个分支修改。留空表示默认分支。
-      required: [repo, patch]
-
-  - name: gh-stage-status
-    description: Which files the staging area would change.
-    descriptions:
-      zh: 暂存区会改动哪些文件。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-      required: [repo]
-
-  - name: gh-stage-diff
-    description: The staged change as a diff. Read-only, and worth checking before opening a PR.
-    descriptions:
-      zh: 暂存改动对应的 diff。只读，开 PR 前值得先看一遍。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-      required: [repo]
-
-  - name: gh-stage-reset
-    description: Discard staged edits — one path, or everything when `path` is empty.
-    descriptions:
-      zh: 丢弃暂存改动——指定 `path` 丢弃单个文件，留空丢弃全部。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        path:
-          type: string
-          descriptions:
-            zh: 文件路径。
-      required: [repo]
-
-  # ── the only way out ────────────────────────────────────────────────────────
   - name: gh-pr-create
     description: >-
-      Turn the staging area into a pull request: one commit on a fresh branch `pr/<id>`, then
-      the PR. THIS IS THE ONLY WAY A CHANGE REACHES GITHUB — there is no commit tool and no
-      push tool. The branch name is new every time, so a second change never rewrites a branch
-      somebody is already reviewing.
+      Publish a WORKSPACE as a pull request: commit it, push a fresh branch pr/<id>, open the
+      PR. THE ONLY WAY A CHANGE REACHES GITHUB — there is no commit tool and no push tool.
     descriptions:
-      zh: 把暂存区变成拉取请求：在新的 `pr/<id>` 分支上生成一个提交，然后开 PR。这是改动进入 GitHub 的唯一途径——没有提交工具，也没有推送工具。分支名每次都不同，第二次改动不会覆盖正在评审的分支。
+      zh: >-
+        把「工作区」发布为拉取请求：提交、推送到新分支 pr/<id>、开 PR。这是改动进入 GitHub 的唯一途径——
+        没有提交工具，也没有推送工具。
     input_schema:
       type: object
       properties:
-        repo:
+        workspace:
           type: string
           descriptions:
-            zh: 仓库。
+            zh: 工作区 id。
+        repo:
+          type: string
+          description: Must match the workspace's repository.
+          descriptions:
+            zh: 必须与工作区的仓库一致。
         title:
           type: string
           descriptions:
@@ -551,7 +666,7 @@ tools:
           description: Branch to merge into. Empty = the repository's default branch.
           descriptions:
             zh: 合入的目标分支。留空表示仓库默认分支。
-      required: [repo, title]
+      required: [workspace, repo, title]
     requires: [pr.create]
 
   - name: gh-pr-list
@@ -567,7 +682,6 @@ tools:
             zh: 仓库。
         state:
           type: string
-          description: open | closed | all (default open)
           descriptions:
             zh: open | closed | all（默认 open）
       required: [repo]
@@ -589,13 +703,48 @@ tools:
             zh: PR 编号。
       required: [repo, number]
 
-  - name: gh-pr-checks
+  - name: gh-pr-files
     description: >-
-      CI status for a pull request: one word (success/pending/failure/none) plus every check
-      run and status context. Considers BOTH the check-runs and the older commit-status APIs,
-      because a repository may use either.
+      The files a pull request changes, with per-file counts. A file whose patch GitHub does not
+      send (binary, or too large) is marked as such rather than shown as an empty change.
     descriptions:
-      zh: 拉取请求的 CI 状态：一个总结（success/pending/failure/none），外加每个检查与状态上下文。同时考虑 check-runs 与较旧的 commit-status 两套 API，因为仓库可能用任一种。
+      zh: >-
+        PR 改动的文件列表与每个文件的增删行数。GitHub 未提供补丁的文件（二进制或过大）会被明确标注，
+        而不是显示为空改动。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-pr-diff
+    description: The whole pull request as one unified diff. Capped at 2000 lines, and says so.
+    descriptions:
+      zh: 整个 PR 的 unified diff。上限 2000 行，触发时会说明。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
+
+  - name: gh-pr-checks
+    description: CI status for a pull request, from both check runs and commit statuses.
+    descriptions:
+      zh: 拉取请求的 CI 状态，同时考虑 check runs 与 commit statuses。
     input_schema:
       type: object
       properties:
@@ -610,11 +759,9 @@ tools:
       required: [repo, number]
 
   - name: gh-pr-merge
-    description: >-
-      Merge a pull request. A refused merge (a conflict, an unmet required check) is reported
-      as an error rather than a false success.
+    description: Merge a pull request. A refused merge is reported as an error, not a success.
     descriptions:
-      zh: 合并拉取请求。被拒绝的合并（冲突、必需的检查未通过）会作为错误报告，而不是假装成功。
+      zh: 合并拉取请求。被拒绝的合并会作为错误报告，而不是假装成功。
     input_schema:
       type: object
       properties:
@@ -628,7 +775,6 @@ tools:
             zh: PR 编号。
         method:
           type: string
-          description: merge | squash | rebase (default merge)
           descriptions:
             zh: merge | squash | rebase（默认 merge）
         title:
@@ -660,47 +806,6 @@ tools:
       required: [repo, number]
     requires: [pr.close]
 
-  - name: gh-pr-files
-    description: >-
-      The files a pull request changes: path, status, and how many lines each adds and removes.
-      A file whose patch GitHub does not send (binary, or too large) is marked as such rather
-      than shown as an empty change.
-    descriptions:
-      zh: >-
-        PR 改动的文件列表：路径、状态、每个文件增删多少行。GitHub 未提供补丁的文件（二进制或过大）
-        会被明确标注，而不是显示为空改动。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
-  - name: gh-pr-diff
-    description: >-
-      The whole pull request as one unified diff, in file order. Capped at 2000 lines, and says
-      so when the cap applies.
-    descriptions:
-      zh: 整个 PR 的 unified diff，按文件顺序。上限 2000 行，触发上限时会明确说明。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
   - name: gh-workflow-list
     description: The repository's Actions workflows.
     descriptions:
@@ -731,7 +836,6 @@ tools:
             zh: 只显示该分支的运行。
         event:
           type: string
-          description: push | pull_request | workflow_dispatch | ...
           descriptions:
             zh: push | pull_request | workflow_dispatch | ...
         limit:
@@ -742,13 +846,11 @@ tools:
 
   - name: gh-run-jobs
     description: >-
-      The jobs and per-step status of a run. This is the LIVE view: while a run is going, the
-      step currently executing reports in_progress. GitHub publishes a job's LOG only after the
-      job finishes, so use this to watch progress and gh-run-log to read the output.
+      Jobs and per-step status of a run — the LIVE view. GitHub publishes a job's LOG only after
+      the job finishes, so use gh-run-log for output.
     descriptions:
       zh: >-
-        某次运行的 job 与逐步状态。这是实时视图：运行进行中时，正在执行的步骤会显示 in_progress。
-        GitHub 只在 job 结束后才提供日志，所以用本工具观察进度、用 gh-run-log 读输出。
+        某次运行的 job 与逐步状态——实时视图。GitHub 只在 job 结束后才提供日志，所以读输出请用 gh-run-log。
     input_schema:
       type: object
       properties:
@@ -765,13 +867,11 @@ tools:
 
   - name: gh-run-log
     description: >-
-      A run's logs, one section per job. Available only once the jobs have finished — GitHub
-      has no API for a running job's output. Defaults to 500 lines per job and says when that
-      cap truncates the log.
+      A run's logs, one section per job. Available only once the jobs have finished — GitHub has
+      no API for a running job's output.
     descriptions:
       zh: >-
         某次运行的日志，按 job 分段。仅在 job 结束后可用——GitHub 没有提供运行中 job 输出的 API。
-        每个 job 默认最多 500 行，触发上限时会明确说明被截断。
     input_schema:
       type: object
       properties:

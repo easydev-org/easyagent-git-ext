@@ -15,16 +15,26 @@ import (
 
 	"github.com/easydev-org/easyagent-github-ext/internal/config"
 	"github.com/easydev-org/easyagent-github-ext/internal/i18n"
-	"github.com/easydev-org/easyagent-github-ext/internal/stage"
+	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 )
+
+// easybusInternal is the SDK's internal-error code, aliased so a handler can say "the
+// deployment is misconfigured" without importing the SDK for one constant.
+const easybusInternal = easybus.ToolResultErrorCodeInternal
+
+// CloneParams is the subset of workspace.CloneOptions the tool layer fills in.
+//
+// Declared here so the tools package does not have to know the shape of the workspace package's
+// options struct — the mapping lives in one place, in gitlocal.go.
+type CloneParams = workspace.CloneOptions
 
 // Deps is what the tools need from the extension host.
 type Deps struct {
 	GetConfig func(name, session, tenant string) any
 	Locale    func(session, tenant string) string
-	// Stage is the staging area. It is required: without it the extension has no way to hold
-	// edits between tool calls, and every write tool would be meaningless.
-	Stage *stage.Stage
+	// Workspaces holds the per-session git checkouts. Required: without it no git-* tool can
+	// run, because every one of them operates on a workspace.
+	Workspaces *workspace.Manager
 }
 
 // Handler is one tool implementation.
@@ -79,12 +89,23 @@ func RequireMap() map[string][]string {
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
 	return map[string]Handler{
-		// Reading. No token needed for a public repository.
-		"gh-info": t.info,
-		"gh-tree": t.tree,
-		"gh-read": t.read,
+		// LOCAL git. Everything here happens inside a workspace directory; none of it talks to
+		// GitHub. A workspace comes from git-clone and is identified by its id.
+		"git-clone":     t.gitClone,
+		"git-workspace": t.gitWorkspace,
+		"git-status":    t.gitStatus,
+		"git-patch":     t.gitPatch,
+		"git-read":      t.gitRead,
+		"git-list":      t.gitList,
+		"git-log":       t.gitLog,
+		"git-diff":      t.gitDiff,
+		"git-blame":     t.gitBlame,
+		"git-commit":    t.gitCommit,
+		"git-pull":      t.gitPull,
+		"git-reset":     t.gitReset,
 
-		// Account.
+		// GITHUB PLATFORM. Repository metadata, account, releases, packages.
+		"gh-info":     t.info,
 		"gh-whoami":   t.whoami,
 		"gh-orgs":     t.orgs,
 		"gh-repos":    t.repos,
@@ -102,13 +123,7 @@ func Registry(d Deps) map[string]Handler {
 		"gh-repo-rename": t.repoRename,
 		"gh-repo-delete": t.repoDelete,
 
-		// The staging area. ONE editing tool.
-		"gh-stage-patch":  t.stagePatch,
-		"gh-stage-status": t.stageStatus,
-		"gh-stage-diff":   t.stageDiff,
-		"gh-stage-reset":  t.stageReset,
-
-		// The only way out: a pull request.
+		// The only way out: a pull request, built from a workspace branch.
 		"gh-pr-create": t.prCreate,
 		"gh-pr-list":   t.prList,
 		"gh-pr-show":   t.prShow,

@@ -1,4 +1,4 @@
-package stage
+package workspace
 
 import (
 	"fmt"
@@ -7,9 +7,27 @@ import (
 
 // Line-level diff, implemented here rather than shelled out to `git diff`.
 //
-// The stage has no checkout: that is the entire point of it. A diff is what a reviewer
-// needs before submitting, so it has to be computable from two byte slices.
+// go-git has no Worktree.Diff, and this package must not shell out to a git binary. A diff is
+// what a reviewer needs before submitting, so it is computed from two byte slices: the content
+// at HEAD and the content on disk.
+
+// isBinary reports whether content looks binary.
 //
+// A NUL byte in the first 8000 bytes is what git itself uses; matching it means a file git calls
+// binary is called binary here too.
+func isBinary(b []byte) bool {
+	n := len(b)
+	if n > 8000 {
+		n = 8000
+	}
+	for i := 0; i < n; i++ {
+		if b[i] == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // The algorithm is a longest-common-subsequence over lines with a size guard. A full
 // Myers implementation would produce prettier diffs, but LCS is exact, short, and easy to
 // reason about — and the guard matters more than the aesthetics: an edit to two sides of

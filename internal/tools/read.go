@@ -90,60 +90,6 @@ func (t *toolset) info(ctx context.Context, args map[string]any, session, tenant
 	}, nil
 }
 
-func (t *toolset) tree(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	c, repo, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	entries, err := c.Tree(ctx, argStr(args, "ref"))
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s: %v", repo, err)
-	}
-
-	// Only blobs by default: a caller asking for a tree almost always wants the FILES, and
-	// listing every directory doubles the output with no extra information.
-	var b strings.Builder
-	n := 0
-	for _, e := range entries {
-		if e.Type != "blob" {
-			continue
-		}
-		fmt.Fprintf(&b, "%s\n", e.Path)
-		n++
-	}
-	if n == 0 {
-		b.WriteString("(no files)\n")
-	}
-	fmt.Fprintf(&b, "\n%d files", n)
-	return extension.ToolResultData{
-		Content: b.String(),
-		Data:    map[string]any{"entries": entries, "count": n},
-	}, nil
-}
-
-func (t *toolset) read(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	c, repo, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	path, err := required(args, "path")
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	f, err := c.ReadFile(ctx, path, argStr(args, "ref"))
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s: %v", repo, err)
-	}
-	content := f.Content
-	// Numbered, because a caller that wants to patch this file needs to know what it is
-	// looking at, and line numbers are how every other file tool reports content.
-	numbered := numberLines(content)
-	return extension.ToolResultData{
-		Content: numbered,
-		Data:    map[string]any{"path": f.Path, "sha": f.SHA, "size": f.Size},
-	}, nil
-}
-
 // numberLines prefixes each line with its 1-based number.
 func numberLines(s string) string {
 	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
