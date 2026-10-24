@@ -306,7 +306,7 @@ func (w *Workspace) Pull(o PullOptions) (oldSHA, newSHA string, err error) {
 		if errors.Is(perr, git.ErrNonFastForwardUpdate) {
 			return old, "", fmt.Errorf(
 				"cannot fast-forward: this branch has commits the remote does not, and the remote has moved. " +
-					"Nothing was changed. Push your branch as a pull request, or reset it with git-reset")
+					"Nothing was changed. Push your branch as a pull request, or reset it with git-ws-reset")
 		}
 		return old, "", fmt.Errorf("pull: %w", perr)
 	}

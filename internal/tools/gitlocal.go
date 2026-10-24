@@ -31,7 +31,7 @@ func (t *toolset) gws(args map[string]any, session, tenant string) (*workspace.W
 	if gerr != nil {
 		if gerr == workspace.ErrNoWorkspace {
 			return nil, errArg("no workspace with id " + id +
-				"; create one with git-clone (it returns the id)")
+				"; create one with git-ws-clone (it returns the id)")
 		}
 		if gerr == workspace.ErrNotOwned {
 			// Deliberately the same message as "not found": confirming that an id EXISTS under
@@ -96,7 +96,7 @@ func (t *toolset) gitWorkspace(ctx context.Context, args map[string]any, session
 	}
 	list := t.deps.Workspaces.List(tenant, session)
 	if len(list) == 0 {
-		return extension.ToolResultData{Content: "no workspaces; create one with git-clone"}, nil
+		return extension.ToolResultData{Content: "no workspaces; create one with git-ws-clone"}, nil
 	}
 	var b strings.Builder
 	for _, w := range list {

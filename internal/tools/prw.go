@@ -13,10 +13,10 @@ import (
 // gh-pr-create: the ONLY way a change reaches GitHub.
 //
 // It PUBLISHES what is already committed: the workspace's current branch is pushed and turned
-// into a pull request. Committing is `git-commit`, kept separate on purpose — a session may
+// into a pull request. Committing is `git-ws-commit`, kept separate on purpose — a session may
 // commit several times before publishing, which is how work is actually done.
 //
-// So the division is: git-commit (local, repeatable) → gh-pr-create (publish once).
+// So the division is: git-ws-commit (local, repeatable) → gh-pr-create (publish once).
 func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
 	repo, err := required(args, "repo")
 	if err != nil {
@@ -58,7 +58,7 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 		}
 		return extension.ToolResultData{}, errArg(
 			"there are uncommitted changes:\n" + b.String() +
-				"commit them with git-commit first, so the pull request carries a message that describes it")
+				"commit them with git-ws-commit first, so the pull request carries a message that describes it")
 	}
 
 	// The branch to publish. A workspace cloned at the default branch has main checked out, and

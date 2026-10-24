@@ -242,7 +242,7 @@ func (w *Workspace) Commit(o CommitOptions) (string, error) {
 		sig.Email = "easyagent@localhost"
 	}
 	// When MUST be set: go-git does not default it, so leaving it out produces commits dated
-	// 1970-01-01. That is not cosmetic — the history a caller reads with git-log would be wrong.
+	// 1970-01-01. That is not cosmetic — the history a caller reads with git-ws-log would be wrong.
 	sig.When = time.Now()
 	h, err := wt.Commit(o.Message, &git.CommitOptions{Author: sig})
 	if err != nil {

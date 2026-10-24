@@ -18,9 +18,15 @@ FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=build /out/github-ext /app/github-ext
-# easyvcs keeps repository OBJECTS in its database, so this path is the staged content itself —
-# it must be a persistent volume. An emptyDir would erase every revision on a pod restart.
-ENV EASYVCS_DRIVER=sqlite
-ENV EASYVCS_DSN=/var/lib/easyvcs/easyvcs.db
-VOLUME ["/var/lib/easyvcs"]
+
+# Workspaces are git checkouts on this pod's LOCAL disk. No database, no volume:
+#
+#   - a checkout is a session's private scratchpad, so a shared volume would let two pods fight
+#     over one index;
+#   - losing them on restart is acceptable and arguably correct — a stale checkout of a branch
+#     that has moved is worse than no checkout, because it looks usable.
+#
+# WORKSPACE_IDLE_TTL means an abandoned checkout does not accumulate until the disk fills.
+ENV WORKSPACE_ROOT=/tmp/workspaces
+ENV WORKSPACE_IDLE_TTL=2h
 ENTRYPOINT ["/app/github-ext"]

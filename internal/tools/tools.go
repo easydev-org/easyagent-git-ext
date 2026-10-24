@@ -90,19 +90,19 @@ func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
 	return map[string]Handler{
 		// LOCAL git. Everything here happens inside a workspace directory; none of it talks to
-		// GitHub. A workspace comes from git-clone and is identified by its id.
-		"git-clone":     t.gitClone,
-		"git-workspace": t.gitWorkspace,
-		"git-status":    t.gitStatus,
-		"git-patch":     t.gitPatch,
-		"git-read":      t.gitRead,
-		"git-list":      t.gitList,
-		"git-log":       t.gitLog,
-		"git-diff":      t.gitDiff,
-		"git-blame":     t.gitBlame,
-		"git-commit":    t.gitCommit,
-		"git-pull":      t.gitPull,
-		"git-reset":     t.gitReset,
+		// GitHub. A workspace comes from git-ws-clone and is identified by its id.
+		"git-ws-clone":     t.gitClone,
+		"git-ws-workspace": t.gitWorkspace,
+		"git-ws-status":    t.gitStatus,
+		"git-ws-patch":     t.gitPatch,
+		"git-ws-read":      t.gitRead,
+		"git-ws-list":      t.gitList,
+		"git-ws-log":       t.gitLog,
+		"git-ws-diff":      t.gitDiff,
+		"git-ws-blame":     t.gitBlame,
+		"git-ws-commit":    t.gitCommit,
+		"git-ws-pull":      t.gitPull,
+		"git-ws-reset":     t.gitReset,
 
 		// GITHUB PLATFORM. Repository metadata, account, releases, packages.
 		"gh-info":     t.info,

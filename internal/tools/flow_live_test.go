@@ -51,10 +51,10 @@ func TestE2EWorkspaceFlow(t *testing.T) {
 		{Key: PermPRCreate, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 
-	t.Log("1. git-clone")
-	res, err := reg["git-clone"](ctx, map[string]any{"repo": repo}, session, tenant)
+	t.Log("1. git-ws-clone")
+	res, err := reg["git-ws-clone"](ctx, map[string]any{"repo": repo}, session, tenant)
 	if err != nil {
-		t.Fatalf("git-clone: %v", err)
+		t.Fatalf("git-ws-clone: %v", err)
 	}
 	wsID, _ := res.Data.(map[string]any)["workspace"].(string)
 	if wsID == "" {
@@ -62,51 +62,51 @@ func TestE2EWorkspaceFlow(t *testing.T) {
 	}
 	t.Logf("%s", indent(res.Content))
 
-	t.Log("2. git-log (real history proves this is a real checkout)")
-	res, err = reg["git-log"](ctx, map[string]any{"workspace": wsID, "limit": 3}, session, tenant)
+	t.Log("2. git-ws-log (real history proves this is a real checkout)")
+	res, err = reg["git-ws-log"](ctx, map[string]any{"workspace": wsID, "limit": 3}, session, tenant)
 	if err != nil {
-		t.Fatalf("git-log: %v", err)
+		t.Fatalf("git-ws-log: %v", err)
 	}
 	t.Logf("%s", indent(res.Content))
 	if !strings.Contains(res.Content, "commits") {
-		t.Errorf("git-log looks empty: %s", res.Content)
+		t.Errorf("git-ws-log looks empty: %s", res.Content)
 	}
 
-	t.Log("3. git-patch")
+	t.Log("3. git-ws-patch")
 	marker := "flow-" + time.Now().Format("150405")
 	patch := "*** Begin Patch\n*** Add File: FLOW.md\n+# Workspace flow\n+\n+" + marker + "\n*** End Patch\n"
-	res, err = reg["git-patch"](ctx, map[string]any{"workspace": wsID, "patch": patch}, session, tenant)
+	res, err = reg["git-ws-patch"](ctx, map[string]any{"workspace": wsID, "patch": patch}, session, tenant)
 	if err != nil {
-		t.Fatalf("git-patch: %v", err)
+		t.Fatalf("git-ws-patch: %v", err)
 	}
 	t.Logf("%s", indent(res.Content))
 
-	t.Log("4. git-status + git-diff")
-	res, _ = reg["git-status"](ctx, map[string]any{"workspace": wsID}, session, tenant)
+	t.Log("4. git-ws-status + git-ws-diff")
+	res, _ = reg["git-ws-status"](ctx, map[string]any{"workspace": wsID}, session, tenant)
 	t.Logf("%s", indent(res.Content))
-	res, err = reg["git-diff"](ctx, map[string]any{"workspace": wsID}, session, tenant)
+	res, err = reg["git-ws-diff"](ctx, map[string]any{"workspace": wsID}, session, tenant)
 	if err != nil {
-		t.Fatalf("git-diff: %v", err)
+		t.Fatalf("git-ws-diff: %v", err)
 	}
 	t.Logf("%s", indent(res.Content))
 	if !strings.Contains(res.Content, "+"+marker) && !strings.Contains(res.Content, marker) {
 		t.Errorf("the diff does not show the new content: %s", res.Content)
 	}
 
-	t.Log("5. git-commit (twice — this is the point of separating it)")
-	if _, err = reg["git-commit"](ctx, map[string]any{"workspace": wsID, "message": "flow: add FLOW.md"}, session, tenant); err != nil {
-		t.Fatalf("git-commit: %v", err)
+	t.Log("5. git-ws-commit (twice — this is the point of separating it)")
+	if _, err = reg["git-ws-commit"](ctx, map[string]any{"workspace": wsID, "message": "flow: add FLOW.md"}, session, tenant); err != nil {
+		t.Fatalf("git-ws-commit: %v", err)
 	}
 	// A second, unrelated change committed separately.
 	// No anchor: the hunk sits at the top of the file, so there is no line above it to name.
 	patch2 := "*** Begin Patch\n*** Update File: FLOW.md\n@@\n # Workspace flow\n+\n+second commit\n*** End Patch\n"
-	if _, err = reg["git-patch"](ctx, map[string]any{"workspace": wsID, "patch": patch2}, session, tenant); err != nil {
-		t.Fatalf("git-patch 2: %v", err)
+	if _, err = reg["git-ws-patch"](ctx, map[string]any{"workspace": wsID, "patch": patch2}, session, tenant); err != nil {
+		t.Fatalf("git-ws-patch 2: %v", err)
 	}
-	if _, err = reg["git-commit"](ctx, map[string]any{"workspace": wsID, "message": "flow: second commit"}, session, tenant); err != nil {
-		t.Fatalf("git-commit 2: %v", err)
+	if _, err = reg["git-ws-commit"](ctx, map[string]any{"workspace": wsID, "message": "flow: second commit"}, session, tenant); err != nil {
+		t.Fatalf("git-ws-commit 2: %v", err)
 	}
-	res, _ = reg["git-log"](ctx, map[string]any{"workspace": wsID, "limit": 3}, session, tenant)
+	res, _ = reg["git-ws-log"](ctx, map[string]any{"workspace": wsID, "limit": 3}, session, tenant)
 	t.Logf("after two commits:\n%s", indent(res.Content))
 	if !strings.Contains(res.Content, "second commit") {
 		t.Errorf("the second commit is missing from the log: %s", res.Content)

@@ -128,14 +128,14 @@ permissions:
 
 tools:
   # ── local git (a workspace on disk; no GitHub call, no token) ────────────────
-  - name: git-clone
+  - name: git-ws-clone
     description: >-
       Clone a repository into a new WORKSPACE and return its id. This is the only way to get a
-      workspace, and every other git-* tool needs one. The id is random and belongs to this
+      workspace, and every other git-ws-* tool needs one. The id is random and belongs to this
       session; it is not derived from the repository and cannot be guessed.
     descriptions:
       zh: >-
-        把仓库克隆到一个新的「工作区」并返回其 id。这是获取工作区的唯一途径，其他所有 git-* 工具都需要它。
+        把仓库克隆到一个新的「工作区」并返回其 id。这是获取工作区的唯一途径，其他所有 git-ws-* 工具都需要它。
         id 是随机的、归属本 session，不由仓库名推导，无法被猜到。
     input_schema:
       type: object
@@ -159,7 +159,7 @@ tools:
             zh: 克隆深度。0（默认）保留完整历史，这样对旧提交的疑问才有真实答案；1 更快但会丢弃历史。
       required: [repo]
 
-  - name: git-workspace
+  - name: git-ws-workspace
     description: List this session's workspaces, or close one with `close`.
     descriptions:
       zh: 列出本 session 的工作区；传 `close` 则关闭指定工作区。
@@ -172,7 +172,7 @@ tools:
           descriptions:
             zh: 要删除的工作区 id。
 
-  - name: git-status
+  - name: git-ws-status
     description: What changed in the workspace, against the checked-out commit.
     descriptions:
       zh: 工作区相对当前检出的提交有哪些改动。
@@ -185,7 +185,7 @@ tools:
             zh: 工作区 id。
       required: [workspace]
 
-  - name: git-patch
+  - name: git-ws-patch
     description: >-
       Edit files in the workspace with a patch. THE ONLY EDITING TOOL. Format: "*** Begin
       Patch" / "*** Add File: path" (+lines) / "*** Update File: path" (@@ anchor, then ' '
@@ -209,7 +209,7 @@ tools:
             zh: 补丁文本。
       required: [workspace, patch]
 
-  - name: git-read
+  - name: git-ws-read
     description: Read a file from the workspace, with line numbers.
     descriptions:
       zh: 读取工作区中的文件，带行号。
@@ -227,7 +227,7 @@ tools:
             zh: 相对工作区根目录的路径。
       required: [workspace, path]
 
-  - name: git-list
+  - name: git-ws-list
     description: List every file in the workspace.
     descriptions:
       zh: 列出工作区中的全部文件。
@@ -240,7 +240,7 @@ tools:
             zh: 工作区 id。
       required: [workspace]
 
-  - name: git-log
+  - name: git-ws-log
     description: >-
       The workspace's commit history — real authors and real commit dates, because this is a
       real git checkout.
@@ -259,7 +259,7 @@ tools:
             zh: 最多返回条数（默认 20）。
       required: [workspace]
 
-  - name: git-diff
+  - name: git-ws-diff
     description: >-
       The workspace's changes as a unified diff. Pass `path` to narrow it to one file. Capped at
       2000 lines, and says so when the cap applies.
@@ -284,7 +284,7 @@ tools:
             zh: 与索引比较，而不是与工作区比较。
       required: [workspace]
 
-  - name: git-blame
+  - name: git-ws-blame
     description: >-
       Who last changed each line of a file, and when. Bounded to a line range (default 200
       lines) because an unbounded blame of a large file buries the answer.
@@ -314,7 +314,7 @@ tools:
             zh: 结束行。
       required: [workspace, path]
 
-  - name: git-commit
+  - name: git-ws-commit
     description: >-
       Commit the workspace's changes LOCALLY. Does not push, and may be called repeatedly — a
       change is often several commits. Publish with gh-pr-create.
@@ -334,7 +334,7 @@ tools:
             zh: 提交信息。
       required: [workspace, message]
 
-  - name: git-pull
+  - name: git-ws-pull
     description: >-
       Fast-forward the workspace to its remote. FAST-FORWARD ONLY: if local commits and the
       remote have diverged, it reports that and changes nothing, because only the caller can
@@ -357,7 +357,7 @@ tools:
             zh: 从哪里快进。留空表示当前分支。
       required: [workspace]
 
-  - name: git-reset
+  - name: git-ws-reset
     description: >-
       Discard working-tree changes, restoring files to the checked-out commit. With `hard` it
       also deletes untracked files — and a hard reset of the WHOLE workspace additionally needs
