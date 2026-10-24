@@ -249,7 +249,10 @@ func (w *Workspace) Pull(o PullOptions) (oldSHA, newSHA string, err error) {
 		branch = head.Name().Short()
 	}
 
-	po := &git.PullOptions{RemoteName: "origin", ReferenceName: plumbing.NewBranchReferenceName(branch)}
+	po := &git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: plumbing.NewBranchReferenceName(branch),
+	}
 	if o.Token != "" {
 		po.Auth = basicAuth(o.Token)
 	}

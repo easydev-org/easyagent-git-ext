@@ -4,18 +4,48 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 )
+
+// installProxyTransport makes go-git use an HTTP client that honours the proxy environment.
+//
+// WHY THIS IS GLOBAL: go-git's Clone/Push/Pull options have no Transport field — the transport
+// is chosen per URL scheme by a registry (transport/client). So the way to influence it is to
+// install a client for "https" once, at startup.
+//
+// WHY IT IS NEEDED AT ALL: go-git defaults to http.DefaultTransport, whose Proxy field IS
+// http.ProxyFromEnvironment, so passing nothing usually works. But "usually" is the problem — in
+// a cluster that reaches the internet only through a proxy, a missing variable surfaces as a TLS
+// handshake timeout, and a caller cannot tell that apart from GitHub being down.
+//
+// Synchronised and idempotent: it is called from NewManager, and installing twice is harmless.
+var installProxyOnce sync.Once
+
+func installProxyTransport() {
+	installProxyOnce.Do(func() {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.Proxy = http.ProxyFromEnvironment
+		// Bounded CONNECTION setup, not transfer: a clone takes as long as the repository is
+		// large, but a proxy that cannot be reached should fail quickly and say so.
+		t.TLSHandshakeTimeout = 20 * time.Second
+		t.ResponseHeaderTimeout = 60 * time.Second
+		client.InstallProtocol("https", githttp.NewClient(&http.Client{Transport: t}))
+		client.InstallProtocol("http", githttp.NewClient(&http.Client{Transport: t}))
+	})
+}
 
 // Git operations on a workspace. All of them go through go-git, in-process.
 

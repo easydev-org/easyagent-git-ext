@@ -74,6 +74,8 @@ type Manager struct {
 
 // NewManager keeps workspaces under root.
 func NewManager(root string, idleTTL time.Duration) (*Manager, error) {
+	// Before any clone or push, so a proxied cluster can reach GitHub at all.
+	installProxyTransport()
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, fmt.Errorf("workspace root %s: %w", root, err)
 	}
