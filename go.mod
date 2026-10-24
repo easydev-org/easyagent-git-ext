@@ -3,7 +3,7 @@ module github.com/easydev-org/easyagent-github-ext
 go 1.26.5
 
 require (
-	github.com/easydev-org/easybus-sdk v0.8.4
+	github.com/easydev-org/easybus-sdk v0.9.2
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/go-github/v93 v93.0.0
 )

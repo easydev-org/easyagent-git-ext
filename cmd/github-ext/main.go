@@ -119,6 +119,9 @@ func main() {
 					}
 				}
 			}()
+			// Publish releases onto the `github` channel, so a session can follow a
+			// repository and be woken when a version ships.
+			startReleaseWatchers(ctx, ext, log)
 		},
 	}); err != nil {
 		log.Error("serve failed", "err", err)

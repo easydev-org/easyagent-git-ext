@@ -29,6 +29,35 @@ config:
       zh: GitHub Enterprise 的 API 地址，例如 https://github.example.com/api/v3。github.com 留空。
     required: false
 
+  - name: watch-repos
+    type: string
+    description: >-
+      Comma-separated owner/name repositories whose RELEASES are published on the `github`
+      channel. Opt-in per repository: polling everything a token can see would exhaust the rate
+      limit and mostly watch repositories nobody here cares about.
+    descriptions:
+      zh: >-
+        逗号分隔的 owner/name 仓库清单，其 RELEASE 会发布到 `github` 频道。
+        按仓库逐个开启：轮询 token 能看到的所有仓库会耗尽配额，而且大多与本处无关。
+    required: false
+
+  - name: watch-interval
+    type: string
+    description: How often to poll for releases, e.g. "60s". Empty uses one minute.
+    descriptions:
+      zh: 轮询 release 的间隔，例如 "60s"。留空表示一分钟。
+    required: false
+
+  - name: watch-prereleases
+    type: string
+    description: >-
+      "true" to announce prereleases too. Off by default: an -rc is not what a downstream build
+      should react to, and announcing it would wake every consumer.
+    descriptions:
+      zh: >-
+        设为 "true" 时也宣告预发布。默认关闭：-rc 不该触发下游构建，宣告它只会唤醒所有消费者。
+    required: false
+
 permissions:
   - key: pr.create
     label: Open pull requests
@@ -890,3 +919,39 @@ tools:
           descriptions:
             zh: 每个 job 最多返回的行数（默认 500）。
       required: [repo, run]
+
+# Events this extension publishes, so a session can follow a repository and be woken when
+# something ships.
+#
+# The channel is `github`, not `gitea`: the two extensions report different forges, and a
+# subscriber following GitHub releases should not also receive tags from a self-hosted Gitea.
+#
+# WHY `release.` and not `tag.`: a TAG is a pointer a build might consume; a RELEASE is an
+# announcement a human made. "Notice the new version" almost always means the release, and a tag
+# pushed without one is not yet news.
+channels:
+  - name: github
+    description: Repository events from GitHub.
+    descriptions:
+      zh: 来自 GitHub 的仓库事件。
+    topics:
+      - pattern: "release.<owner>/<repo>.<tag>"
+        description: >-
+          A release was published on a repository. Subscribe with "release.<owner>/<repo>.>" to
+          follow one repository, or "release.<owner>/>" for every repository under an owner.
+          Prereleases and drafts are not announced unless watch-prereleases is on.
+        descriptions:
+          zh: >-
+            仓库发布了 release。用 "release.<owner>/<repo>.>" 订阅某个仓库，
+            或用 "release.<owner>/>" 订阅某个 owner 下的所有仓库。
+            预发布和草稿默认不宣告，除非开启 watch-prereleases。
+        payload:
+          type: object
+          properties:
+            repo: {type: string}
+            tag: {type: string}
+            name: {type: string}
+            url: {type: string}
+            ref: {type: string}
+            prerelease: {type: boolean}
+            published_at: {type: string}
