@@ -24,47 +24,10 @@ type DiffOptions struct {
 
 // Diff renders the workspace's changes as a unified diff.
 //
-// go-git has no Worktree.Diff, so this is computed here: for each changed path, the content at
-// HEAD against the content on disk (or in the index). The line-level algorithm lives in diff.go
-// and was written for exactly this — a diff that does not need a git binary.
+// Delegates to go-git's own diff machinery (DiffGoGit). Keeping the name `Diff` means the tool
+// layer does not care how it is computed.
 func (w *Workspace) Diff(o DiffOptions) (string, error) {
-	r, err := w.open()
-	if err != nil {
-		return "", err
-	}
-	head, err := r.Head()
-	if err != nil {
-		// An unborn HEAD (nothing committed yet) means every file is new.
-		head = &plumbing.Reference{}
-	}
-
-	var headTree *object.Tree
-	if head.Hash().IsZero() == false {
-		commit, cerr := r.CommitObject(head.Hash())
-		if cerr == nil {
-			headTree, _ = commit.Tree()
-		}
-	}
-
-	paths, err := w.changedPaths(o)
-	if err != nil {
-		return "", err
-	}
-
-	var b []byte
-	for _, p := range paths {
-		old, existed := treeFile(headTree, p)
-		next, rerr := w.ReadFile(p)
-		present := rerr == nil
-		if !present {
-			next = nil
-		}
-		if existed && present && string(old) == string(next) {
-			continue
-		}
-		b = append(b, unifiedDiff(p, old, next, isBinary(old) || isBinary(next))...)
-	}
-	return string(b), nil
+	return w.DiffGoGit(o)
 }
 
 // treeFile reads one path out of a tree, reporting whether it was there.
