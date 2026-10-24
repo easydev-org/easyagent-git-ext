@@ -3,6 +3,9 @@ name: ci
 on:
   push:
     branches: [main]
+    # Tags too, or the image job below never runs: it is gated on a v* ref, and a push event that
+    # filters branches only would never start this workflow for a tag.
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
