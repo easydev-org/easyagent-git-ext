@@ -159,18 +159,26 @@ func (c *Client) RunJobs(ctx context.Context, runID int64) ([]Job, error) {
 			job := Job{
 				ID: j.GetID(), Name: j.GetName(), Status: j.GetStatus(),
 				Conclusion: j.GetConclusion(), URL: j.GetHTMLURL(),
-				StartedAt: j.GetStartedAt().Format("15:04:05"),
+			}
+			// StartedAt is nil for a job that has not started yet. A freshly dispatched run has
+			// jobs in `queued` with no start time, so this is the common case, not an edge one.
+			//
+			// The guard is `GetTime() != nil`, NOT `!j.StartedAt.IsZero()`: Timestamp embeds
+			// time.Time and IsZero has a VALUE receiver, so calling it through a nil pointer
+			// dereferences and panics. GetTime is nil-safe, and it is the only safe accessor here.
+			if p := j.StartedAt.GetTime(); p != nil {
+				job.StartedAt = p.Format("15:04:05")
 			}
 			for _, s := range j.Steps {
 				step := Step{
 					Number: s.GetNumber(), Name: s.GetName(),
 					Status: s.GetStatus(), Conclusion: s.GetConclusion(),
 				}
-				if !s.StartedAt.IsZero() {
-					step.StartedAt = s.StartedAt.Format("15:04:05")
+				if p := s.StartedAt.GetTime(); p != nil {
+					step.StartedAt = p.Format("15:04:05")
 				}
-				if !s.CompletedAt.IsZero() {
-					step.CompletedAt = s.CompletedAt.Format("15:04:05")
+				if p := s.CompletedAt.GetTime(); p != nil {
+					step.CompletedAt = p.Format("15:04:05")
 				}
 				job.Steps = append(job.Steps, step)
 			}

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -59,6 +60,14 @@ func main() {
 	var ext *extension.Extension
 	handlers := tools.Registry(tools.Deps{
 		Workspaces: wsMgr,
+		// Object storage for gh-artifact-download. An artifact archive is arbitrary in size, so
+		// it is stored under a tenant-scoped key and referred to by name — never returned inline.
+		PutObject: func(ctx context.Context, tenant, name string, data []byte) error {
+			if ext == nil {
+				return fmt.Errorf("extension not ready")
+			}
+			return ext.PutObject(ctx, tenant, name, data)
+		},
 		GetConfig: func(name, session, tenant string) any {
 			if ext == nil {
 				return nil

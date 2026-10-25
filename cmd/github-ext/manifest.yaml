@@ -59,6 +59,45 @@ config:
     required: false
 
 permissions:
+  - key: run.rerun
+    label: Rerun CI
+    descriptions:
+      zh: 重跑 CI
+    risk: write
+    params:
+      - name: repo
+        type: string
+        descriptions:
+          zh: 仓库。
+    descriptions_long:
+      zh: 允许重跑某次运行（默认只重跑失败的 job）。会消耗 CI 时间和额度。
+
+  - key: run.cancel
+    label: Cancel CI
+    descriptions:
+      zh: 取消 CI
+    risk: destructive
+    params:
+      - name: repo
+        type: string
+        descriptions:
+          zh: 仓库。
+    descriptions_long:
+      zh: 允许取消运行中的工作流。正在执行的步骤会中断，尚未完成的工作不会产出结果。
+
+  - key: run.dispatch
+    label: Trigger CI
+    descriptions:
+      zh: 触发 CI
+    risk: write
+    params:
+      - name: repo
+        type: string
+        descriptions:
+          zh: 仓库。
+    descriptions_long:
+      zh: 允许手动触发 workflow_dispatch。这意味着可以启动部署或发布流程。
+
   - key: pr.create
     label: Open pull requests
     descriptions:
@@ -949,6 +988,146 @@ tools:
           descriptions:
             zh: 最多返回的行数，取日志**末尾**（默认 500）。
       required: [repo, job]
+
+  - name: gh-artifacts
+    description: >-
+      The artifacts a run uploaded: id, name, size, and whether each has EXPIRED (an expired one
+      cannot be downloaded, so this says so before a caller tries).
+    descriptions:
+      zh: >-
+        某次运行上传的产物：id、名称、大小，以及是否已**过期**（过期的无法下载，先说明以免调用者白试）。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+      required: [repo, run]
+
+  - name: gh-artifact-download
+    description: >-
+      Download one artifact and store it in the tenant's OBJECT STORAGE, returning the object
+      name. The archive is not returned inline — an artifact is a zip of arbitrary size, and
+      base64 in a tool result would be unreadable and would flood the conversation.
+    descriptions:
+      zh: >-
+        下载单个产物并存入租户的**对象存储**，返回对象名。压缩包不会直接内联返回——产物大小不定，
+        在工具结果里放 base64 既读不了又会淹没对话。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        artifact:
+          type: integer
+          description: Artifact id from gh-artifacts.
+          descriptions:
+            zh: 来自 gh-artifacts 的产物 id。
+        name:
+          type: string
+          description: Used in the stored object name.
+          descriptions:
+            zh: 用于生成存储对象名。
+        max_bytes:
+          type: integer
+          description: Refuse anything larger (default 64 MiB).
+          descriptions:
+            zh: 超过此大小则拒绝（默认 64 MiB）。
+      required: [repo, artifact]
+
+  - name: gh-run-rerun
+    description: >-
+      Rerun a run. Defaults to `failed_only: true` — a rerun is almost always "the flaky one
+      failed", and rerunning everything throws away the jobs that already passed. A rerun starts
+      a new ATTEMPT on the same run id.
+    descriptions:
+      zh: >-
+        重跑某次运行。默认 `failed_only: true`——重跑几乎总是因为「那个 flaky 的失败了」，
+        全部重跑会丢掉已经通过的 job。重跑会在同一个 run id 上开始新的 **attempt**。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+        failed_only:
+          type: boolean
+          description: Rerun only the failed jobs (default true).
+          descriptions:
+            zh: 只重跑失败的 job（默认 true）。
+      required: [repo, run]
+    requires: [run.rerun]
+
+  - name: gh-run-cancel
+    description: >-
+      Cancel a run. Cancellation is a REQUEST, not an instant stop: GitHub lets the step in
+      progress finish, so poll gh-run-jobs until the job reports completed.
+    descriptions:
+      zh: >-
+        取消某次运行。取消是**请求**而非立即停止：GitHub 会让当前步骤走完，因此要轮询 gh-run-jobs
+        直到 job 显示 completed。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+      required: [repo, run]
+    requires: [run.cancel]
+
+  - name: gh-run-dispatch
+    description: >-
+      Trigger a workflow_dispatch. `workflow` is the file name (ci.yml) or the numeric id.
+      `ref` defaults to the repository's default branch. Returns the run id it created, so the
+      caller can follow it rather than guess.
+    descriptions:
+      zh: >-
+        触发 workflow_dispatch。`workflow` 为文件名（ci.yml）或数字 id。`ref` 默认取仓库默认分支。
+        返回它创建出的 run id，调用者可直接跟进而不必猜。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        workflow:
+          type: string
+          description: Workflow file name or id.
+          descriptions:
+            zh: 工作流文件名或 id。
+        ref:
+          type: string
+          description: Branch or tag. Empty = default branch.
+          descriptions:
+            zh: 分支或标签。留空表示默认分支。
+        inputs:
+          type: object
+          description: The workflow's declared inputs.
+          descriptions:
+            zh: 工作流声明的输入参数。
+      required: [repo, workflow]
+    requires: [run.dispatch]
 
 # Events this extension publishes, so a session can follow a repository and be woken when
 # something ships.

@@ -31,6 +31,22 @@ func argBool(args map[string]any, key string) bool {
 	return b
 }
 
+// argBoolDefault reads a boolean, falling back to def when the key is ABSENT.
+//
+// Distinct from argBool because "absent" and "explicitly false" must differ when the default is
+// true: with argBool alone, a parameter defaulting to true could never be turned off.
+func argBoolDefault(args map[string]any, key string, def bool) bool {
+	v, ok := args[key]
+	if !ok || v == nil {
+		return def
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return def
+	}
+	return b
+}
+
 func argInt(args map[string]any, key string) int {
 	v, ok := args[key]
 	if !ok || v == nil {

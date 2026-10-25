@@ -35,6 +35,10 @@ type Deps struct {
 	// Workspaces holds the per-session git checkouts. Required: without it no git-* tool can
 	// run, because every one of them operates on a workspace.
 	Workspaces *workspace.Manager
+	// PutObject stores a large object for a tenant. Used by gh-artifact-download: an artifact is
+	// a zip of arbitrary size, so it is stored and referenced by name rather than returned in the
+	// tool result. Nil means the deployment has no object storage, and that tool reports so.
+	PutObject func(ctx context.Context, tenant, name string, data []byte) error
 }
 
 // Handler is one tool implementation.
@@ -54,6 +58,13 @@ const (
 	PermRepoDelete = "repo.delete"
 	// PermTagCreate creates tags — the event a downstream subscription reacts to.
 	PermTagCreate = "tag.create"
+	// PermRunRerun reruns a workflow run. Spends CI minutes, so it is not a free operation.
+	PermRunRerun = "run.rerun"
+	// PermRunCancel cancels a run. Destructive: the work in flight never produces a result.
+	PermRunCancel = "run.cancel"
+	// PermRunDispatch triggers a workflow. It can start a deployment, which is why it is
+	// separate from merely reading runs.
+	PermRunDispatch = "run.dispatch"
 	// PermTagDelete deletes a tag. Destructive: a released version disappears with it.
 	PermTagDelete = "tag.delete"
 	// NOTE: there is deliberately NO release.create permission. Releases are published by CI,
@@ -67,13 +78,16 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	"gh-pr-create":   {PermPRCreate},
-	"gh-pr-merge":    {PermPRMerge},
-	"gh-pr-close":    {PermPRClose},
-	"gh-repo-create": {PermRepoCreate},
-	"gh-repo-delete": {PermRepoDelete},
-	"gh-tag-create":  {PermTagCreate},
-	"gh-tag-delete":  {PermTagDelete},
+	"gh-pr-create":    {PermPRCreate},
+	"gh-pr-merge":     {PermPRMerge},
+	"gh-pr-close":     {PermPRClose},
+	"gh-repo-create":  {PermRepoCreate},
+	"gh-repo-delete":  {PermRepoDelete},
+	"gh-tag-create":   {PermTagCreate},
+	"gh-tag-delete":   {PermTagDelete},
+	"gh-run-rerun":    {PermRunRerun},
+	"gh-run-cancel":   {PermRunCancel},
+	"gh-run-dispatch": {PermRunDispatch},
 }
 
 // RequireMap returns a copy so a caller cannot mutate the shared table.
@@ -136,11 +150,16 @@ func Registry(d Deps) map[string]Handler {
 		"gh-pr-diff":  t.prDiff,
 
 		// CI. gh-run-jobs is the live view; gh-run-log is available once a job finishes.
-		"gh-workflow-list": t.workflowList,
-		"gh-run-list":      t.runList,
-		"gh-run-jobs":      t.runJobs,
-		"gh-run-log":       t.runLog,
-		"gh-job-log":       t.jobLog,
+		"gh-workflow-list":     t.workflowList,
+		"gh-run-list":          t.runList,
+		"gh-run-jobs":          t.runJobs,
+		"gh-run-log":           t.runLog,
+		"gh-job-log":           t.jobLog,
+		"gh-artifacts":         t.artifactList,
+		"gh-artifact-download": t.artifactDownload,
+		"gh-run-rerun":         t.runRerun,
+		"gh-run-cancel":        t.runCancel,
+		"gh-run-dispatch":      t.runDispatch,
 	}
 }
 
