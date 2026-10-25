@@ -162,3 +162,32 @@ func (t *toolset) runLog(ctx context.Context, args map[string]any, session, tena
 		Data:    map[string]any{"run": runID, "jobs": len(logs)},
 	}, nil
 }
+
+// jobLog returns ONE job's log.
+//
+// Separate from gh-run-log because the two answer different questions. A run's zip holds every
+// job, so a caller reading it must unzip to find the one that failed; this fetches that job's
+// text directly. Its tail is what matters — a failure is at the END of a log — so the line cap
+// keeps the LAST lines rather than the first.
+func (t *toolset) jobLog(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	c, repo, err := t.clientFor(tenant, args)
+	if err != nil {
+		return extension.ToolResultData{}, err
+	}
+	jobID := int64(argInt(args, "job"))
+	if jobID <= 0 {
+		return extension.ToolResultData{}, errArg(`"job" is required: the job id from gh-run-jobs`)
+	}
+	limit := argInt(args, "lines")
+	if limit <= 0 {
+		limit = 500
+	}
+	text, lerr := c.JobLog(ctx, jobID, limit)
+	if lerr != nil {
+		return extension.ToolResultData{}, errFailed("%s job %d: %v", repo, jobID, lerr)
+	}
+	return extension.ToolResultData{
+		Content: text,
+		Data:    map[string]any{"job": jobID, "lines": limit},
+	}, nil
+}

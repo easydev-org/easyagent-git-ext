@@ -140,6 +140,7 @@ func Registry(d Deps) map[string]Handler {
 		"gh-run-list":      t.runList,
 		"gh-run-jobs":      t.runJobs,
 		"gh-run-log":       t.runLog,
+		"gh-job-log":       t.jobLog,
 	}
 }
 

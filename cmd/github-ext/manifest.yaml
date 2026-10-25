@@ -920,6 +920,36 @@ tools:
             zh: 每个 job 最多返回的行数（默认 500）。
       required: [repo, run]
 
+  - name: gh-job-log
+    description: >-
+      One job's log. Use this rather than gh-run-log when a run reports "unit failed" — it
+      returns that job's text directly instead of a zip of every job. The line cap keeps the LAST
+      lines, because a failure is at the end of a log. NOT available while the job runs: GitHub
+      has no API for a running job's output, and this fails with an explanation saying so.
+    descriptions:
+      zh: >-
+        单个 job 的日志。当运行报告「unit 失败」时用它，而不是 gh-run-log——它直接返回该 job 的文本，
+        而不是所有 job 的 zip。行数上限保留的是**最后**几行，因为失败在日志末尾。
+        运行中不可用：GitHub 没有提供运行中 job 输出的 API，本工具会明确说明这一点。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        job:
+          type: integer
+          description: Job id from gh-run-jobs.
+          descriptions:
+            zh: 来自 gh-run-jobs 的 job id。
+        lines:
+          type: integer
+          description: Max lines, taken from the END of the log (default 500).
+          descriptions:
+            zh: 最多返回的行数，取日志**末尾**（默认 500）。
+      required: [repo, job]
+
 # Events this extension publishes, so a session can follow a repository and be woken when
 # something ships.
 #

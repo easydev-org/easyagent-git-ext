@@ -204,8 +204,9 @@ func (c *Client) RunLogs(ctx context.Context, runID int64, maxLinesPerJob int) (
 	c.note(resp)
 	if err != nil {
 		if IsNotFound(err) {
-			return nil, fmt.Errorf("no logs for run %d yet: GitHub publishes a job's log only after the job finishes "+
-				"(watch progress with gh-run-jobs, which is live)", runID)
+			return nil, fmt.Errorf("no logs for run %d yet: GitHub only publishes a job's log once the job "+
+				"FINISHES. There is no API for a running job's output — the live signal is the step STATUS: "+
+				"poll gh-run-jobs to see which step is executing and how long it has been there", runID)
 		}
 		return nil, wrap(err)
 	}
