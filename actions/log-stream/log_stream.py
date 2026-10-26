@@ -127,9 +127,14 @@ class CheckRun:
 
     # ---- lifecycle -------------------------------------------------------
     def start(self):
+        # external_id carries the workflow run id, and that is the whole point of setting it: a
+        # check run has its own check_suite, unrelated to the workflow run's, so nothing in the
+        # object otherwise says which run published it. With this field, a reader given a run id can
+        # find exactly this text instead of guessing among every check run on the commit.
         st, res = self._call("/check-runs", "POST", {
             "name": self.name,
             "head_sha": self.sha,
+            "external_id": os.environ.get("GITHUB_RUN_ID", ""),
             "status": "in_progress",
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "output": {"title": self.name, "summary": "streaming…", "text": "starting…"},

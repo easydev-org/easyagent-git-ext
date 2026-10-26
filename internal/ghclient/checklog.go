@@ -26,6 +26,11 @@ type CheckRunLog struct {
 	Text    string
 	// HTMLURL points at the check run on github.com.
 	HTMLURL string
+	// ExternalID is what the publisher set it to; the log-stream action puts the workflow RUN ID
+	// here, because nothing else in a check run says which run created it.
+	ExternalID string
+	// fromThisRun marks a check run whose external_id names the run that was asked about.
+	fromThisRun bool
 }
 
 // CheckRunLogByJob reads the check run whose id equals the job id.
@@ -45,35 +50,71 @@ func (c *Client) CheckRunLogByJob(ctx context.Context, jobID int64) (*CheckRunLo
 	return toCheckRunLog(cr), nil
 }
 
-// CheckRunLogsForRun lists the check runs attached to a workflow run's check suite.
+// CheckRunLogsForRun lists the check runs published against a workflow run's commit.
 //
-// This is how the log-stream action's check run is found: it is not a job, so it does not appear
-// in the run's job list, but it IS attached to the same suite.
+// WHY NOT THE CHECK SUITE: the obvious route — run → check_suite_id → its check runs — returns only
+// the check run GitHub created for the job itself, which is empty. A check run that a step POSTs is
+// attached to the same COMMIT but not to that suite. Measured on one run:
+//
+//	check suite of the run   → 121637275523  text_len=0
+//	check runs on the commit → 121637337009  text_len=844   <- the published one
+//
+// So the search goes by commit. That also means callers see every check run on that commit,
+// including ones from earlier runs of the same workflow; the caller filters by HasText.
 func (c *Client) CheckRunLogsForRun(ctx context.Context, runID int64) ([]*CheckRunLog, error) {
 	run, resp, err := c.gh.Actions.GetWorkflowRunByID(ctx, c.Owner, c.Repo, runID)
 	c.note(resp)
 	if err != nil {
 		return nil, wrap(err)
 	}
-	suiteID := run.GetCheckSuiteID()
-	if suiteID == 0 {
-		return nil, fmt.Errorf("run %d has no check suite", runID)
+	sha := run.GetHeadSHA()
+	if sha == "" {
+		return nil, fmt.Errorf("run %d has no head sha", runID)
 	}
 	out := []*CheckRunLog{}
+	wantRun := fmt.Sprintf("%d", runID)
 	err = paginate(func(page int) (*gogithub.Response, error) {
-		runs, resp2, err := c.gh.Checks.ListCheckRunsCheckSuite(ctx, c.Owner, c.Repo, suiteID,
-			&gogithub.ListCheckRunsOptions{ListOptions: gogithub.ListOptions{Page: page, PerPage: 100}})
+		runs, resp2, err := c.gh.Checks.ListCheckRunsForRef(ctx, c.Owner, c.Repo, sha,
+			&gogithub.ListCheckRunsOptions{
+				Filter:      gogithub.String("all"),
+				ListOptions: gogithub.ListOptions{Page: page, PerPage: 100},
+			})
 		c.note(resp2)
 		if err != nil {
 			return resp2, err
 		}
 		for _, cr := range runs.CheckRuns {
-			out = append(out, toCheckRunLog(cr))
+			l := toCheckRunLog(cr)
+			// Prefer the ones this run published. A commit can carry check runs from earlier runs
+			// of the same workflow, and showing those would report a different build's output as
+			// if it were this one — the worst kind of wrong answer here, because it looks valid.
+			if l.ExternalID == wantRun {
+				l.fromThisRun = true
+			}
+			out = append(out, l)
 		}
 		return resp2, nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	// If nothing declares this run, fall back to everything on the commit: an older action version
+	// did not set external_id, and refusing to show anything would punish the caller for that.
+	anyFromRun := false
+	for _, l := range out {
+		if l.fromThisRun {
+			anyFromRun = true
+			break
+		}
+	}
+	if anyFromRun {
+		kept := out[:0]
+		for _, l := range out {
+			if l.fromThisRun {
+				kept = append(kept, l)
+			}
+		}
+		out = kept
 	}
 	return out, nil
 }
@@ -84,6 +125,7 @@ func toCheckRunLog(cr *gogithub.CheckRun) *CheckRunLog {
 		Status:     cr.GetStatus(),
 		Conclusion: cr.GetConclusion(),
 		HTMLURL:    cr.GetHTMLURL(),
+		ExternalID: cr.GetExternalID(),
 	}
 	// Output is a pointer struct; text is only present when somebody wrote it.
 	if o := cr.GetOutput(); o != nil {
