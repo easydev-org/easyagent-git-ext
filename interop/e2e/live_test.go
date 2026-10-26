@@ -101,7 +101,9 @@ func harness(t *testing.T) (*agent.Agent, *nats.Bus) {
 		specs[name] = extension.ToolSpec{
 			Requires: requires[name],
 			Execute: func(ctx context.Context, args map[string]any, callID, sess, tn string) (extension.ToolResultData, error) {
-				return h(ctx, args, callID, sess, tn)
+				// The handler takes no callID: progress reaches it through the context (see
+				// tools.Progress). The adapter is the only place that knows the call.
+				return h(ctx, args, sess, tn)
 			},
 		}
 	}
