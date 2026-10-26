@@ -22,9 +22,6 @@ func (t *toolset) issueCreate(ctx context.Context, args map[string]any, session,
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := t.requireRepo(ctx, PermDeveloper, repo); err != nil {
-		return extension.ToolResultData{}, err
-	}
 	c, _, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err

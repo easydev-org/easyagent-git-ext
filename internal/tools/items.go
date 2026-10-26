@@ -70,7 +70,7 @@ func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, t
 	if isPR {
 		if pr, perr := c.PR(ctx, n); perr == nil {
 			fmt.Fprintf(&b, "\nbranch: %s -> %s\n", pr.Head, pr.Base)
-			fmt.Fprintf(&b, "mergeable: %v\n", pr.Mergeable)
+			b.WriteString(renderMergeable(pr.Mergeable))
 			b.WriteString("\nuse gh-pr-files / gh-pr-diff / gh-pr-checks for the change itself")
 		}
 	}
@@ -170,9 +170,6 @@ func (t *toolset) issueComment(ctx context.Context, args map[string]any, session
 	}
 	body, err := required(args, "body")
 	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	if err := t.requireRepo(ctx, PermDeveloper, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	c, _, err := t.clientFor(tenant, args)
@@ -276,11 +273,6 @@ func (t *toolset) issueClose(ctx context.Context, args map[string]any, session, 
 	if ierr != nil {
 		return extension.ToolResultData{}, errFailed("%s#%d: %v", repo, n, ierr)
 	}
-	// Closing is a developer action when it is your own; a maintainer may close anyone's. The
-	// ownership question is answered by the author, which is the only field GitHub offers.
-	if err := t.requireOwnership(ctx, tenant, PermDeveloper, repo, n); err != nil {
-		return extension.ToolResultData{}, err
-	}
 	if cerr := c.CloseIssue(ctx, n); cerr != nil {
 		return extension.ToolResultData{}, errFailed("%s#%d: %v", repo, n, cerr)
 	}
@@ -296,4 +288,20 @@ func (t *toolset) issueClose(ctx context.Context, args map[string]any, session, 
 		Content: fmt.Sprintf("closed issue #%d", n),
 		Data:    map[string]any{"issue": n, "closed": "issue"},
 	}, nil
+}
+
+// renderMergeable turns the tri-state into three distinguishable sentences.
+//
+// Mergeable is a *bool because GitHub computes it asynchronously: nil means "not worked out yet",
+// which is a different instruction to the caller than false. Printing the pointer with %v emitted
+// an address ("0x3bbecddc62d0"), which reads as a value and is not one.
+func renderMergeable(v *bool) string {
+	switch {
+	case v == nil:
+		return "mergeable: unknown (GitHub is still computing it; ask again shortly)\n"
+	case *v:
+		return "mergeable: yes\n"
+	default:
+		return "mergeable: NO — conflicts with the base branch, or a required check failed\n"
+	}
 }

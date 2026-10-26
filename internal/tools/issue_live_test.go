@@ -37,8 +37,8 @@ func TestE2EIssuesAndComments(t *testing.T) {
 	defer cancel()
 	tenant, session := "alice", "issuese2e"
 	ctx = extension.WithGrants(ctx, []*easybus.Grant{
-		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
-		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermMaintainer, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermMaintainer, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 
 	marker := time.Now().Format("150405")

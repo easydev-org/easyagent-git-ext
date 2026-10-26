@@ -47,30 +47,26 @@ type Handler func(ctx context.Context, args map[string]any, session, tenant stri
 
 // Permission keys this extension declares.
 //
-// THREE KEYS, not twelve. The granular ones answered "what kind of object is this?"; the question
-// a reviewer actually decides is "is this session trusted with this repository, and how far?".
+// TWO KEYS. Reading, opening an issue and commenting need none of them; those do not change
+// anything, and gating a comment would only stop a session from asking a question.
 //
-// The line between the two repository levels:
+//	repo.maintainer  every operation that CHANGES something: close an issue, open or merge a pull
+//	                 request, run CI, tag a release, rename or delete the repository
+//	org.admin        create a repository — organization level, because the repository does not
+//	                 exist yet and there is nothing to scope a grant to
 //
-//	developer   may move the repository FORWARD — propose a change, discuss it, run CI
-//	maintainer  may also move it BACKWARD — merge to the trunk, rewrite what was already
-//	            published, delete the repository
-//
-// A maintainer grant also satisfies a developer check (see requireRepo); the reverse is false.
+// There is deliberately no "developer" level. It existed to separate proposing from deciding, and
+// every operation had to be argued into one side: is opening a pull request proposing? is running
+// CI? is closing an issue? The answers were never convincing, and the ownership rule that came
+// with it was always true in this deployment (one token, many sessions), so it protected nothing
+// while looking as though it did.
 const (
-	// PermDeveloper proposes and discusses: open issues, comment, open pull requests, run CI.
-	// Scoped to one repository.
-	PermDeveloper = "repo.developer"
-	// PermMaintainer changes what is already published and the repository itself: merge, delete
-	// a tag, delete or rename the repository.
+	// PermMaintainer may change the repository and everything in it.
 	PermMaintainer = "repo.maintainer"
-	// PermOrgAdmin creates repositories. A separate key rather than a repository permission
-	// because the repository does not exist yet — there is no repo scope to grant it on, and
-	// creating one is a decision about the ORGANIZATION, not about any existing repository.
+	// PermOrgAdmin creates repositories.
 	PermOrgAdmin = "org.admin"
-	// NOTE: there is deliberately NO key for publishing a release. Releases are published by CI,
-	// so no grant would make a hand-made one allowed; declaring a key would only invite somebody
-	// to ask for one.
+	// NOTE: there is deliberately no key for publishing a release. Releases are published by CI,
+	// so no grant would make a hand-made one allowed.
 )
 
 // requireMap names the permissions each tool needs.
@@ -79,22 +75,17 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	// Developer: propose, discuss, run CI.
-	"gh-issue-create":  {PermDeveloper},
-	"gh-issue-comment": {PermDeveloper},
-	"gh-pr-create":     {PermDeveloper},
-	"gh-run-dispatch":  {PermDeveloper},
-	"gh-run-rerun":     {PermDeveloper},
-	"gh-run-cancel":    {PermDeveloper},
-	// Close is a developer action on your OWN work; requireOwnership adds that condition on top.
-	"gh-issue-close": {PermDeveloper},
-
-	// Maintainer: change what is already published, or the repository itself.
-	"gh-pr-merge":    {PermMaintainer},
-	"gh-tag-create":  {PermMaintainer},
-	"gh-tag-delete":  {PermMaintainer},
-	"gh-repo-delete": {PermMaintainer},
-	"gh-repo-rename": {PermMaintainer},
+	// Everything that CHANGES something.
+	"gh-issue-close":  {PermMaintainer},
+	"gh-pr-create":    {PermMaintainer},
+	"gh-pr-merge":     {PermMaintainer},
+	"gh-run-dispatch": {PermMaintainer},
+	"gh-run-rerun":    {PermMaintainer},
+	"gh-run-cancel":   {PermMaintainer},
+	"gh-tag-create":   {PermMaintainer},
+	"gh-tag-delete":   {PermMaintainer},
+	"gh-repo-rename":  {PermMaintainer},
+	"gh-repo-delete":  {PermMaintainer},
 
 	// Organization level: the repository does not exist yet.
 	"gh-repo-create": {PermOrgAdmin},
@@ -218,12 +209,6 @@ func (t *toolset) requireRepo(ctx context.Context, perm string, repo string) err
 			Key: PermOrgAdmin, Target: map[string]string{"org": owner},
 			Granted: extension.GrantsFor(ctx, PermOrgAdmin),
 		}
-	}
-	// LEVELS, one direction only: a maintainer is trusted with everything a developer is, so a
-	// maintainer grant satisfies a developer check. The reverse would mean a developer could
-	// merge, which is the distinction the two levels exist to draw.
-	if perm == PermDeveloper && extension.Allowed(ctx, PermMaintainer, target) {
-		return nil
 	}
 	return &extension.PermissionDenied{Key: perm, Target: target, Granted: extension.GrantsFor(ctx, perm)}
 }

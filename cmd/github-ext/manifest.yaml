@@ -59,22 +59,6 @@ config:
     required: false
 
 permissions:
-  - key: repo.developer
-    label: Developer
-    descriptions:
-      zh: 开发者
-    risk: write
-    params:
-      - name: repo
-        type: string
-        descriptions:
-          zh: 仓库（owner/name）。
-    descriptions_long:
-      zh: >-
-        可以推动仓库**向前走**：提 issue、评论、开拉取请求、跑 CI。
-        不能合并到主干，不能撤销已发布的版本，不能删除或重命名仓库。
-        对自己创建的对象（issue、拉取请求、运行）可以关闭或取消；对别人的不行。
-
   - key: repo.maintainer
     label: Maintainer
     descriptions:
@@ -87,9 +71,9 @@ permissions:
           zh: 仓库（owner/name）。
     descriptions_long:
       zh: >-
-        可以**改变已发布的东西**和仓库本身：合并拉取请求、创建与删除标签、
-        删除或重命名仓库，以及操作任何人的 issue / PR / 运行。
-        包含开发者的全部能力。
+        允许一切**会改变东西**的操作：创建与合并拉取请求、关闭 issue、
+        触发/重跑/取消 CI、创建与删除标签、删除或重命名仓库。
+        读、提 issue、评论**不需要**此权限——那些不改变任何东西。
 
   - key: org.admin
     label: Organization admin
@@ -260,7 +244,6 @@ tools:
         body: {type: string, descriptions: {zh: 正文（Markdown）。}}
         labels: {type: array, items: {type: string}, descriptions: {zh: 标签。}}
       required: [repo, title]
-    requires: [repo.developer]
 
   - name: gh-issue-list
     description: >-
@@ -312,7 +295,6 @@ tools:
         line: {type: integer, descriptions: {zh: 该文件中的行号。}}
         side: {type: string, descriptions: {zh: RIGHT（改动后，默认）或 LEFT（原始）。}}
       required: [repo, issue_id, body]
-    requires: [repo.developer]
 
   - name: gh-issue-comments
     description: >-
@@ -342,9 +324,10 @@ tools:
         repo: {type: string, descriptions: {zh: 仓库。}}
         issue_id: {type: integer, descriptions: {zh: issue 或 PR 的编号。}}
       required: [repo, issue_id]
-    requires: [repo.developer]
 
   # ── 拉取请求独有（issue 没有这些动作）─────────────────────────────────────
+    requires: [repo.maintainer]
+
   - name: gh-pr-create
     description: >-
       Publish a WORKSPACE as a pull request: commit, push a fresh branch pr/<id>, open the PR.
@@ -362,7 +345,7 @@ tools:
         body: {type: string, descriptions: {zh: PR 描述。}}
         base: {type: string, descriptions: {zh: 目标分支；留空为默认分支。}}
       required: [workspace, repo, title]
-    requires: [repo.developer]
+    requires: [repo.maintainer]
 
   - name: gh-pr-files
     description: The files a pull request changes, with per-file counts.
@@ -670,7 +653,7 @@ tools:
         run: {type: integer, descriptions: {zh: 运行 id。}}
         failed_only: {type: boolean, descriptions: {zh: 只重跑失败的（默认 true）。}}
       required: [repo, run]
-    requires: [repo.developer]
+    requires: [repo.maintainer]
 
   - name: gh-run-cancel
     description: >-
@@ -683,7 +666,7 @@ tools:
         repo: {type: string, descriptions: {zh: 仓库。}}
         run: {type: integer, descriptions: {zh: 运行 id。}}
       required: [repo, run]
-    requires: [repo.developer]
+    requires: [repo.maintainer]
 
   - name: gh-run-dispatch
     description: >-
@@ -698,7 +681,7 @@ tools:
         ref: {type: string, descriptions: {zh: 分支或标签；留空为默认分支。}}
         inputs: {type: object, descriptions: {zh: 工作流声明的输入。}}
       required: [repo, workflow]
-    requires: [repo.developer]
+    requires: [repo.maintainer]
 
 # Events this extension publishes, so a session can follow a repository and be woken when
 # something ships.

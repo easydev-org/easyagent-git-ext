@@ -8,7 +8,7 @@ import (
 	"github.com/easydev-org/easybus-sdk/extension"
 )
 
-func grants(gs ...*easybus.Grant) context.Context {
+func ctxWith(gs ...*easybus.Grant) context.Context {
 	return extension.WithGrants(context.Background(), gs)
 }
 
@@ -16,89 +16,91 @@ func repoGrant(key, repo string) *easybus.Grant {
 	return &easybus.Grant{Key: key, Params: easybus.Struct(map[string]any{"repo": repo})}
 }
 
-// A maintainer is trusted with everything a developer is. The reverse must NOT hold, or the two
-// levels would be one level with two names.
-func TestMaintainerCoversDeveloperAndNotTheReverse(t *testing.T) {
-	const repo = "o/r"
-
-	// A maintainer grant satisfies a developer check.
-	ctx := grants(repoGrant(PermMaintainer, repo))
-	if err := (&toolset{}).requireRepo(ctx, PermDeveloper, repo); err != nil {
-		t.Errorf("maintainer should satisfy developer: %v", err)
-	}
-	// And a maintainer check.
-	if err := (&toolset{}).requireRepo(ctx, PermMaintainer, repo); err != nil {
-		t.Errorf("maintainer should satisfy maintainer: %v", err)
-	}
-
-	// A developer grant does NOT satisfy a maintainer check.
-	ctx2 := grants(repoGrant(PermDeveloper, repo))
-	if err := (&toolset{}).requireRepo(ctx2, PermDeveloper, repo); err != nil {
-		t.Errorf("developer should satisfy developer: %v", err)
-	}
-	if err := (&toolset{}).requireRepo(ctx2, PermMaintainer, repo); err == nil {
-		t.Error("a developer must not satisfy a maintainer check")
-	}
-}
-
-// A grant for one repository must not cover another.
-func TestPermissionIsScopedToOneRepository(t *testing.T) {
-	ctx := grants(repoGrant(PermMaintainer, "o/one"))
-	ts := &toolset{}
-	if err := ts.requireRepo(ctx, PermDeveloper, "o/one"); err != nil {
-		t.Errorf("the granted repository should pass: %v", err)
-	}
-	if err := ts.requireRepo(ctx, PermDeveloper, "o/two"); err == nil {
-		t.Error("a grant for o/one must not cover o/two")
-	}
-}
-
-// A wildcard grant covers every repository of one owner, which is how "all my repos" is expressed.
-func TestWildcardGrantCoversOwner(t *testing.T) {
-	ctx := grants(repoGrant(PermDeveloper, "o/*"))
-	ts := &toolset{}
-	if err := ts.requireRepo(ctx, PermDeveloper, "o/anything"); err != nil {
-		t.Errorf("o/* should cover o/anything: %v", err)
-	}
-	if err := ts.requireRepo(ctx, PermDeveloper, "other/anything"); err == nil {
-		t.Error("o/* must not cover another owner")
-	}
-}
-
-// Creating a repository is an ORGANIZATION permission: the repository does not exist yet, so a
-// repository grant cannot be the thing that authorises it.
-func TestRepoCreateNeedsOrgAdminNotRepoMaintainer(t *testing.T) {
-	const slug = "acme/new-thing"
-
-	// A maintainer grant for that slug does not authorise creating it.
-	ctx := grants(repoGrant(PermMaintainer, slug))
-	if err := (&toolset{}).requireRepo(ctx, PermOrgAdmin, slug); err == nil {
-		t.Error("repo.maintainer must not authorise creating a repository")
-	}
-
-	// org.admin does.
-	ctx2 := grants(&easybus.Grant{Key: PermOrgAdmin, Params: easybus.Struct(map[string]any{"org": "acme"})})
-	if err := (&toolset{}).requireRepo(ctx2, PermOrgAdmin, slug); err != nil {
-		t.Errorf("org.admin should authorise creation: %v", err)
-	}
-}
-
-// The merge tool is the one action an issue cannot perform, and it must be maintainer-only.
-func TestMergeIsMaintainerOnly(t *testing.T) {
-	got := RequireMap()["gh-pr-merge"]
-	if len(got) != 1 || got[0] != PermMaintainer {
-		t.Errorf("gh-pr-merge requires %v, want [%s]", got, PermMaintainer)
-	}
-}
-
-// Publishing a version and withdrawing it must sit at the same level: "may publish but not
-// withdraw" is a state that should not exist.
-func TestTagCreateAndDeleteAreBothMaintainer(t *testing.T) {
+// Reading, opening an issue and commenting need NO grant. A session that cannot ask a question is
+// not a safer session, only a quieter one.
+func TestExpressingNeedsNoPermission(t *testing.T) {
 	m := RequireMap()
-	for _, tool := range []string{"gh-tag-create", "gh-tag-delete"} {
+	for _, tool := range []string{
+		"gh-issue-create", "gh-issue-comment", "gh-issue-list", "gh-issue-show",
+		"gh-issue-comments", "gh-pr-files", "gh-pr-diff", "gh-pr-checks",
+	} {
+		if got := m[tool]; len(got) != 0 {
+			t.Errorf("%s should need no permission, but requires %v", tool, got)
+		}
+	}
+}
+
+// Everything that CHANGES something needs repo.maintainer — including closing an issue, which a
+// contributor may not do even to its own.
+func TestChangingNeedsMaintainer(t *testing.T) {
+	m := RequireMap()
+	for _, tool := range []string{
+		"gh-issue-close",
+		"gh-pr-create", "gh-pr-merge",
+		"gh-run-dispatch", "gh-run-rerun", "gh-run-cancel",
+		"gh-tag-create", "gh-tag-delete",
+		"gh-repo-rename", "gh-repo-delete",
+	} {
 		got := m[tool]
 		if len(got) != 1 || got[0] != PermMaintainer {
 			t.Errorf("%s requires %v, want [%s]", tool, got, PermMaintainer)
 		}
+	}
+}
+
+// A maintainer grant is scoped to one repository and does not leak to another.
+func TestMaintainerIsScopedToOneRepository(t *testing.T) {
+	ctx := ctxWith(repoGrant(PermMaintainer, "o/one"))
+	ts := &toolset{}
+	if err := ts.requireRepo(ctx, PermMaintainer, "o/one"); err != nil {
+		t.Errorf("the granted repository should pass: %v", err)
+	}
+	if err := ts.requireRepo(ctx, PermMaintainer, "o/two"); err == nil {
+		t.Error("a grant for o/one must not cover o/two")
+	}
+}
+
+// A wildcard covers one owner's repositories, which is how "all my repositories" is expressed.
+func TestWildcardCoversOwner(t *testing.T) {
+	ctx := ctxWith(repoGrant(PermMaintainer, "o/*"))
+	ts := &toolset{}
+	if err := ts.requireRepo(ctx, PermMaintainer, "o/anything"); err != nil {
+		t.Errorf("o/* should cover o/anything: %v", err)
+	}
+	if err := ts.requireRepo(ctx, PermMaintainer, "other/anything"); err == nil {
+		t.Error("o/* must not cover another owner")
+	}
+}
+
+// Creating a repository is an ORGANIZATION decision: there is no repository yet to scope a grant
+// to, so a repository-level grant must not authorise it.
+func TestRepoCreateIsOrgScoped(t *testing.T) {
+	const slug = "acme/new-thing"
+
+	ctx := ctxWith(repoGrant(PermMaintainer, slug))
+	if err := (&toolset{}).requireRepo(ctx, PermOrgAdmin, slug); err == nil {
+		t.Error("repo.maintainer must not authorise creating a repository")
+	}
+
+	ctx2 := ctxWith(&easybus.Grant{
+		Key: PermOrgAdmin, Params: easybus.Struct(map[string]any{"org": "acme"}),
+	})
+	if err := (&toolset{}).requireRepo(ctx2, PermOrgAdmin, slug); err != nil {
+		t.Errorf("org.admin should authorise creation under that org: %v", err)
+	}
+
+	// And not under a different org.
+	ctx3 := ctxWith(&easybus.Grant{
+		Key: PermOrgAdmin, Params: easybus.Struct(map[string]any{"org": "other"}),
+	})
+	if err := (&toolset{}).requireRepo(ctx3, PermOrgAdmin, slug); err == nil {
+		t.Error("org.admin for 'other' must not authorise creating under 'acme'")
+	}
+}
+
+// There are exactly two keys. A third would mean the model crept back toward per-operation grants.
+func TestExactlyTwoPermissions(t *testing.T) {
+	if PermMaintainer == PermOrgAdmin {
+		t.Fatal("the two permission keys must differ")
 	}
 }

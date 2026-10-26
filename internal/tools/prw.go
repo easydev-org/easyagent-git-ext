@@ -26,7 +26,7 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := t.requireRepo(ctx, PermDeveloper, repo); err != nil {
+	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	if t.token(tenant) == "" {

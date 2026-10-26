@@ -39,7 +39,7 @@ func TestE2EPRComments(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	ctx = extension.WithGrants(ctx, []*easybus.Grant{
-		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermMaintainer, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 	session, tenant := "prcomment", "alice"
 
