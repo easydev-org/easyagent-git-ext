@@ -27,6 +27,19 @@ jobs:
 
 The step's own log is unchanged — output goes to both places.
 
+Each line carries the UTC time it arrived:
+
+```
+13:23:38 configure: starting
+13:23:43 compile unit 1/12
+13:24:33 test: 42 passed
+```
+
+That stamp is the point of the exercise: without it a reader cannot tell a build that is working
+from one that stalled. It is deliberately coarse — HH:MM:SS, not the Actions log's
+ISO-with-microseconds — because this is a progress view, and exact timestamps live in the Actions
+log where a post-mortem belongs.
+
 ## Read it from outside
 
 ```
@@ -40,6 +53,12 @@ The check run id appears in the step's log as `log-stream: check run <id>`. Sinc
 check run share an id, the value from `GET /actions/runs/{run}/jobs` works here too.
 
 ## What it does not do
+
+**It is not a copy of the Actions log.** Only the output of the command you wrap is streamed. The
+runner's own framing (`##[group]Run …`, the resolved `with:` block, setup notices) never reaches
+this text, and colour is lost because the child is writing to a pipe rather than a terminal. Treat
+the two as complements: this one answers "what is it doing right now", the Actions log answers "what
+exactly happened".
 
 **It cannot publish more than 65535 characters.** That is GitHub's limit on `output.text`, and it
 is not configurable. The buffer therefore keeps the newest lines and drops the oldest with a

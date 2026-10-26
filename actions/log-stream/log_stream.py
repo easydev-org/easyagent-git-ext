@@ -100,8 +100,20 @@ class CheckRun:
         return body
 
     def feed(self, line):
+        """Record one line of output, stamped with the time it arrived.
+
+        The timestamp is what makes the stream readable at all: without it a reader cannot tell a
+        build that is working from one that stalled five minutes ago, and the whole point of
+        streaming is to answer that question while it is still being asked.
+
+        HH:MM:SS and not the Actions log's full ISO-with-microseconds: this text is a progress
+        view read at a glance, and the precision that matters is "which second", not "which
+        nanosecond". The exact timestamps remain in the Actions log, which is where a post-mortem
+        should look.
+        """
+        stamp = time.strftime("%H:%M:%S", time.gmtime())
         with self.lock:
-            self.lines.append(line.rstrip("\n"))
+            self.lines.append("%s %s" % (stamp, line.rstrip("\n")))
             self.dirty = True
 
     # ---- lifecycle -------------------------------------------------------
