@@ -120,7 +120,44 @@ func harness(t *testing.T) (*agent.Agent, *nats.Bus) {
 		t.Fatalf("connect agent: %v", err)
 	}
 	t.Cleanup(func() { _ = agBus.Close() })
-	return agent.New(agBus), agBus
+
+	ag := agent.New(agBus)
+
+	// Serve() announces the extension on its own goroutine, so a caller that returns immediately
+	// races it: the first test to run sees an empty discovery and fails with "extension not
+	// discovered; got []", while the next test passes because by then the registration has landed.
+	// That is a flaky test, not a flaky extension — and a flaky test gets ignored, so wait here.
+	waitUntilDiscovered(t, ag)
+	return ag, agBus
+}
+
+// waitUntilDiscovered blocks until the extension answers discovery, or fails after a bounded wait.
+//
+// Retries rather than sleeping a fixed amount: the wait is usually a few milliseconds, and a fixed
+// second would be paid on every test to cover the occasional slow start.
+func waitUntilDiscovered(t *testing.T, a *agent.Agent) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var last error
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		found, err := a.Discover(ctx, 2000)
+		cancel()
+		if err == nil {
+			for _, m := range found {
+				if m.Id == extID {
+					return
+				}
+			}
+		} else {
+			last = err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if last != nil {
+		t.Fatalf("extension %q never appeared within 15s (last error: %v)", extID, last)
+	}
+	t.Fatalf("extension %q never appeared within 15s", extID)
 }
 
 // configure writes the token the way the console does, so the extension sees a write from somebody
