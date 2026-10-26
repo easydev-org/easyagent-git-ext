@@ -45,8 +45,14 @@ runs:
         INPUT_MAX_BYTES: ${{ inputs.max_bytes }}
       run: |
         set -euo pipefail
-        # The script ships next to this action.yml, so no checkout of another repository is needed.
-        script="$(dirname "$GITHUB_ACTION_PATH")/log_stream.py"
+        # The script sits IN the action's own directory. dirname would step out of it, which is
+        # how the first version pointed at a file that does not exist — and then reported it as an
+        # exit code rather than a missing path, which took a log dig to find.
+        script="$GITHUB_ACTION_PATH/log_stream.py"
+        if [ ! -f "$script" ]; then
+          echo "log-stream: $script is missing from the action checkout" >&2
+          exit 2
+        fi
         args=(--interval "$INPUT_INTERVAL" --max-bytes "$INPUT_MAX_BYTES")
         if [ -n "${INPUT_NAME}" ]; then args+=(--name "$INPUT_NAME"); fi
         python3 "$script" "${args[@]}" -- bash -c "$INPUT_COMMAND"
