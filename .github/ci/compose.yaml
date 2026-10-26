@@ -1,0 +1,22 @@
+# Services for the github-ext end-to-end test.
+#
+# ONLY nats. Everything else this extension talks to is REAL and external:
+#   * git — the repository is easydev-org/test, cloned over HTTPS with a token, because the tool
+#     under test IS git and a stub would prove nothing about credentials or transport;
+#   * the GitHub API — for issues/PRs/releases, reached over the network the runner already has.
+#
+# Putting a fake in front of either would test the fake.
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: ci-nats
+    ports:
+      - "4222:4222"
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      # Wait for the broker to ANSWER, not merely to have started.
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8222/healthz || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 3s

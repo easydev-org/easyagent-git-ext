@@ -26,6 +26,58 @@ jobs:
       - name: test
         run: go test -race ./...
 
+  # The extension against a REAL broker and a REAL GitHub repository.
+  #
+  # The agent is NOT part of this: a tool call is a request on
+  # `easybus.<tenant>.tool.call.<extId>.<tool>`, so the test plays the agent's part with the SDK's
+  # own client.
+  #
+  # The clone target is a real repository rather than a fixture, because the tool under test IS git:
+  # a stub would prove nothing about credentials, transport or ref handling — which is exactly where
+  # this extension fails. A pull request cannot reach the token, so this runs on push and dispatch.
+  live:
+    runs-on: ubuntu-latest
+    needs: unit
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: start nats
+        run: docker compose -f .github/ci/compose.yaml up -d
+
+      - name: wait for nats
+        run: |
+          set -uo pipefail
+          for i in $(seq 1 60); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' ci-nats 2>/dev/null || echo missing)"
+            if [ "$status" = "healthy" ]; then echo "nats healthy"; exit 0; fi
+            sleep 2
+          done
+          echo "::error::nats never became healthy"
+          docker inspect -f '{{json .State.Health}}' ci-nats || true
+          docker logs ci-nats 2>&1 | tail -30 || true
+          exit 1
+
+      - name: live e2e (real GitHub)
+        env:
+          E2E_NATS_URL: nats://127.0.0.1:4222
+          # A token with read access to easydev-org/test. The clone is the assertion: without this
+          # the suite would skip, which is why the skip is loud in the log.
+          E2E_GITHUB_TOKEN: ${{ secrets.E2E_GITHUB_TOKEN }}
+        run: go test ./interop/e2e/ -v -count=1 -timeout 600s
+
+      - name: dump nats logs on failure
+        if: failure()
+        run: docker compose -f .github/ci/compose.yaml logs --no-color
+
+      - name: down
+        if: always()
+        run: docker compose -f .github/ci/compose.yaml down -v
+
   # The release image. Built ONLY from a tag: an image called `latest` that nobody decided to
   # publish is worse than no image at all, and this repository had no workflow before, so it had
   # no image and no tag either.
