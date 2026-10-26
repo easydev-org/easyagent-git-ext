@@ -90,7 +90,9 @@ func harness(t *testing.T) (*agent.Agent, *nats.Bus) {
 			return ext.GetConfig(tn, name, sess)
 		},
 		Locale:         func(sess, tn string) string { return "" },
-		ReportProgress: func(ctx context.Context, tn, callID string, p any) error { return nil },
+		// Nil, not a no-op: the contract says nil DISABLES progress, which is what a test wants.
+		// A stub returning nil would instead pretend a report was published.
+		ReportProgress: nil,
 	})
 	specs := make(map[string]extension.ToolSpec, len(handlers))
 	requires := tools.RequireMap()
