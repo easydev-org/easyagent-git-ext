@@ -158,6 +158,7 @@ func Registry(d Deps) map[string]Handler {
 		"gh-run-jobs":          t.runJobs,
 		"gh-run-log":           t.runLog,
 		"gh-job-log":           t.jobLog,
+		"gh-step-log":          t.stepLog,
 		"gh-artifacts":         t.artifactList,
 		"gh-artifact-download": t.artifactDownload,
 		"gh-run-rerun":         t.runRerun,

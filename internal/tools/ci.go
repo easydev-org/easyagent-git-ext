@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
@@ -112,7 +113,10 @@ func (t *toolset) runJobs(ctx context.Context, args map[string]any, session, ten
 			case "success":
 				mark = "."
 			}
-			fmt.Fprintf(&b, "  %s %-40s %s\n", mark, s.Name, ss)
+			// The elapsed time is what turns "in_progress" into information: a step that has run
+			// for nine seconds and one that has run for nine minutes are both "in_progress", and
+			// only the second is worth worrying about.
+			fmt.Fprintf(&b, "  %s %-40s %-12s%s\n", mark, s.Name, ss, stepElapsed(s))
 		}
 		b.WriteString("\n")
 	}
@@ -195,4 +199,38 @@ func (t *toolset) jobLog(ctx context.Context, args map[string]any, session, tena
 		Content: text,
 		Data:    map[string]any{"job": jobID, "lines": limit},
 	}, nil
+}
+
+// stepElapsed renders how long a step has taken, or how long it has been running.
+//
+// The format is short on purpose: it sits in a table beside the status, and its job is to make
+// "in_progress" measurable — nine seconds and nine minutes are the same word otherwise.
+func stepElapsed(s ghclient.Step) string {
+	if s.StartedAt == "" {
+		return ""
+	}
+	start, err := time.Parse("15:04:05", s.StartedAt)
+	if err != nil {
+		return ""
+	}
+	end := time.Now()
+	if s.CompletedAt != "" {
+		if e, eerr := time.Parse("15:04:05", s.CompletedAt); eerr == nil {
+			end = e
+		}
+	}
+	d := end.Sub(start)
+	if d < 0 {
+		// The step started before midnight and finished after it, and only the clock time was
+		// kept. Reporting nothing is honest; reporting a negative duration is not.
+		return ""
+	}
+	out := fmt.Sprintf("%ds", int(d.Seconds()))
+	if d >= time.Minute {
+		out = fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	if s.CompletedAt == "" {
+		out += " +"
+	}
+	return out
 }

@@ -612,6 +612,53 @@ tools:
       required: [repo, job]
 
   # ── CI：产物与操作 ─────────────────────────────────────────────────────
+  - name: gh-step-log
+    description: >-
+      ONE step's log, from the endpoint the GitHub log viewer itself uses: JSON lines with ANSI
+      colour preserved, plus the step's UUID and duration. Better than gh-job-log (a zip of plain
+      text) when you want a single step. Only FINISHED steps have a log — GitHub reports log_url
+      null for a running one and this says so. Without `step` or `step_name` it lists the steps
+      with their UUIDs so you can pick.
+    descriptions:
+      zh: >-
+        单个 step 的日志，取自 GitHub 日志查看器自己用的端点：JSON 行、保留 ANSI 颜色，并给出该 step 的
+        UUID 与耗时。想看单步时比 gh-job-log（纯文本 zip）更合适。**只有已完成的 step 才有日志**——
+        GitHub 对运行中的 step 报告 log_url 为 null，本工具会明确说明。不传 `step` 或 `step_name`
+        时会列出所有 step 及其 UUID 供选择。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        run:
+          type: integer
+          description: Run id from gh-run-list.
+          descriptions:
+            zh: 来自 gh-run-list 的运行 id。
+        job:
+          type: integer
+          description: Job id from gh-run-jobs.
+          descriptions:
+            zh: 来自 gh-run-jobs 的 job id。
+        step:
+          type: integer
+          description: Step number, as GitHub numbers it.
+          descriptions:
+            zh: step 序号（GitHub 的编号）。
+        step_name:
+          type: string
+          description: Substring of the step name, case-insensitive.
+          descriptions:
+            zh: step 名称的子串，不区分大小写。
+        lines:
+          type: integer
+          description: Max lines, taken from the END of the log (default 500).
+          descriptions:
+            zh: 最多行数，取日志**末尾**（默认 500）。
+      required: [repo, run, job]
+
   - name: gh-artifacts
     description: The artifacts a run uploaded, flagging expired ones.
     descriptions:
