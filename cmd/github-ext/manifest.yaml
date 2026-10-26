@@ -98,6 +98,34 @@ permissions:
     descriptions_long:
       zh: 允许手动触发 workflow_dispatch。这意味着可以启动部署或发布流程。
 
+  - key: issue.create
+    label: Open issues
+    descriptions:
+      zh: 创建 issue
+    risk: write
+    params:
+      - name: repo
+        type: string
+        descriptions:
+          zh: 仓库。
+    descriptions_long:
+      zh: 允许开 issue。issue 会出现在公开时间线并通知订阅者。
+
+  - key: issue.comment
+    label: Comment on issues and pull requests
+    descriptions:
+      zh: 在 issue 与拉取请求上评论
+    risk: write
+    params:
+      - name: repo
+        type: string
+        descriptions:
+          zh: 仓库。
+    descriptions_long:
+      zh: >-
+        允许评论。这是**对外发声**而非内部记录：评论会通知所有关注者、出现在公开时间线，
+        因此在 PR 上的评论也受此权限约束。
+
   - key: pr.create
     label: Open pull requests
     descriptions:
@@ -1128,6 +1156,185 @@ tools:
             zh: 工作流声明的输入参数。
       required: [repo, workflow]
     requires: [run.dispatch]
+
+  - name: gh-issue-create
+    description: >-
+      Open an issue. `title` is required — an issue without one cannot be found or discussed.
+    descriptions:
+      zh: 创建 issue。`title` 必填——没有标题的 issue 既找不到也无法讨论。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        title:
+          type: string
+          descriptions:
+            zh: 标题。
+        body:
+          type: string
+          descriptions:
+            zh: 正文（Markdown）。
+        labels:
+          type: array
+          items: {type: string}
+          descriptions:
+            zh: 标签。
+      required: [repo, title]
+    requires: [issue.create]
+
+  - name: gh-issue-list
+    description: >-
+      Issues, newest first. Pull requests are filtered OUT: GitHub returns both from this
+      endpoint, and a caller asking for issues does not want pull requests mixed in.
+    descriptions:
+      zh: >-
+        issue 列表，最新的在前。拉取请求会被**过滤掉**：GitHub 这个端点会同时返回两者，
+        而要 issue 的调用者并不想把 PR 混进来。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        state:
+          type: string
+          descriptions:
+            zh: open | closed | all（默认 open）
+        label:
+          type: string
+          descriptions:
+            zh: 只显示带该标签的。
+        limit:
+          type: integer
+          descriptions:
+            zh: 最多返回条数（默认 30）。
+      required: [repo]
+
+  - name: gh-issue-show
+    description: >-
+      One issue WITH its comments. The discussion is included because an issue without it is
+      only the request, not the decision.
+    descriptions:
+      zh: >-
+        单个 issue，**含评论**。之所以带上讨论，是因为没有讨论的 issue 只是请求，还没有结论。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: issue 编号。
+      required: [repo, number]
+
+  - name: gh-issue-comment
+    description: Comment on an issue.
+    descriptions:
+      zh: 在 issue 上评论。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: issue 编号。
+        body:
+          type: string
+          descriptions:
+            zh: 评论内容（Markdown）。
+      required: [repo, number, body]
+    requires: [issue.comment]
+
+  - name: gh-issue-close
+    description: Close an issue.
+    descriptions:
+      zh: 关闭 issue。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: issue 编号。
+      required: [repo, number]
+
+  - name: gh-pr-comment
+    description: >-
+      Comment on a pull request. With `path` and `line` it attaches to that line of the diff
+      (side defaults to RIGHT, the changed file); without them it is a conversation comment.
+      Giving only one of path/line is refused, because half a location is a mistake.
+    descriptions:
+      zh: >-
+        在拉取请求上评论。带 `path` 与 `line` 时附在该行 diff 上（side 默认 RIGHT，即改动后的文件）；
+        都不带则是普通对话评论。只给 path 或只给 line 会被拒绝，因为半个位置本身就是错误。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+        body:
+          type: string
+          descriptions:
+            zh: 评论内容（Markdown）。
+        path:
+          type: string
+          description: File to comment on, for a line comment.
+          descriptions:
+            zh: 行内评论指向的文件。
+        line:
+          type: integer
+          description: Line number in that file.
+          descriptions:
+            zh: 该文件中的行号。
+        side:
+          type: string
+          description: RIGHT (changed file, default) or LEFT (original).
+          descriptions:
+            zh: RIGHT（改动后的文件，默认）或 LEFT（原始文件）。
+      required: [repo, number, body]
+    requires: [issue.comment]
+
+  - name: gh-pr-comments
+    description: >-
+      What has been said on a pull request: BOTH the conversation and the line comments, labelled
+      separately. Showing only one would let a caller reply into a thread it cannot see.
+    descriptions:
+      zh: >-
+        PR 上的全部发言：**对话评论与行内评论都有**，并分别标注。只显示一种会让调用者对着看不见的
+        讨论串回复。
+    input_schema:
+      type: object
+      properties:
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        number:
+          type: integer
+          descriptions:
+            zh: PR 编号。
+      required: [repo, number]
 
 # Events this extension publishes, so a session can follow a repository and be woken when
 # something ships.

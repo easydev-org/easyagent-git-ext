@@ -65,6 +65,11 @@ const (
 	// PermRunDispatch triggers a workflow. It can start a deployment, which is why it is
 	// separate from merely reading runs.
 	PermRunDispatch = "run.dispatch"
+	// PermIssueCreate opens issues — the way work gets requested.
+	PermIssueCreate = "issue.create"
+	// PermIssueComment writes a comment on an issue OR a pull request. Gated because a comment
+	// notifies every watcher and appears on a public timeline: it is speaking, not noting.
+	PermIssueComment = "issue.comment"
 	// PermTagDelete deletes a tag. Destructive: a released version disappears with it.
 	PermTagDelete = "tag.delete"
 	// NOTE: there is deliberately NO release.create permission. Releases are published by CI,
@@ -78,16 +83,19 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	"gh-pr-create":    {PermPRCreate},
-	"gh-pr-merge":     {PermPRMerge},
-	"gh-pr-close":     {PermPRClose},
-	"gh-repo-create":  {PermRepoCreate},
-	"gh-repo-delete":  {PermRepoDelete},
-	"gh-tag-create":   {PermTagCreate},
-	"gh-tag-delete":   {PermTagDelete},
-	"gh-run-rerun":    {PermRunRerun},
-	"gh-run-cancel":   {PermRunCancel},
-	"gh-run-dispatch": {PermRunDispatch},
+	"gh-pr-create":     {PermPRCreate},
+	"gh-pr-merge":      {PermPRMerge},
+	"gh-pr-close":      {PermPRClose},
+	"gh-repo-create":   {PermRepoCreate},
+	"gh-repo-delete":   {PermRepoDelete},
+	"gh-tag-create":    {PermTagCreate},
+	"gh-tag-delete":    {PermTagDelete},
+	"gh-run-rerun":     {PermRunRerun},
+	"gh-run-cancel":    {PermRunCancel},
+	"gh-run-dispatch":  {PermRunDispatch},
+	"gh-issue-create":  {PermIssueCreate},
+	"gh-issue-comment": {PermIssueComment},
+	"gh-pr-comment":    {PermIssueComment},
 }
 
 // RequireMap returns a copy so a caller cannot mutate the shared table.
@@ -160,6 +168,15 @@ func Registry(d Deps) map[string]Handler {
 		"gh-run-rerun":         t.runRerun,
 		"gh-run-cancel":        t.runCancel,
 		"gh-run-dispatch":      t.runDispatch,
+
+		// Issues and comments: saying something, not just looking.
+		"gh-issue-create":  t.issueCreate,
+		"gh-issue-list":    t.issueList,
+		"gh-issue-show":    t.issueShow,
+		"gh-issue-comment": t.issueComment,
+		"gh-issue-close":   t.issueClose,
+		"gh-pr-comment":    t.commentPR,
+		"gh-pr-comments":   t.commentsPR,
 	}
 }
 
