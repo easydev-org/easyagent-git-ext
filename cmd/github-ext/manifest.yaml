@@ -59,503 +59,405 @@ config:
     required: false
 
 permissions:
-  - key: run.rerun
-    label: Rerun CI
+  - key: repo.developer
+    label: Developer
     descriptions:
-      zh: 重跑 CI
+      zh: 开发者
     risk: write
     params:
       - name: repo
         type: string
         descriptions:
-          zh: 仓库。
-    descriptions_long:
-      zh: 允许重跑某次运行（默认只重跑失败的 job）。会消耗 CI 时间和额度。
-
-  - key: run.cancel
-    label: Cancel CI
-    descriptions:
-      zh: 取消 CI
-    risk: destructive
-    params:
-      - name: repo
-        type: string
-        descriptions:
-          zh: 仓库。
-    descriptions_long:
-      zh: 允许取消运行中的工作流。正在执行的步骤会中断，尚未完成的工作不会产出结果。
-
-  - key: run.dispatch
-    label: Trigger CI
-    descriptions:
-      zh: 触发 CI
-    risk: write
-    params:
-      - name: repo
-        type: string
-        descriptions:
-          zh: 仓库。
-    descriptions_long:
-      zh: 允许手动触发 workflow_dispatch。这意味着可以启动部署或发布流程。
-
-  - key: issue.create
-    label: Open issues
-    descriptions:
-      zh: 创建 issue
-    risk: write
-    params:
-      - name: repo
-        type: string
-        descriptions:
-          zh: 仓库。
-    descriptions_long:
-      zh: 允许开 issue。issue 会出现在公开时间线并通知订阅者。
-
-  - key: issue.comment
-    label: Comment on issues and pull requests
-    descriptions:
-      zh: 在 issue 与拉取请求上评论
-    risk: write
-    params:
-      - name: repo
-        type: string
-        descriptions:
-          zh: 仓库。
+          zh: 仓库（owner/name）。
     descriptions_long:
       zh: >-
-        允许评论。这是**对外发声**而非内部记录：评论会通知所有关注者、出现在公开时间线，
-        因此在 PR 上的评论也受此权限约束。
+        可以推动仓库**向前走**：提 issue、评论、开拉取请求、跑 CI。
+        不能合并到主干，不能撤销已发布的版本，不能删除或重命名仓库。
+        对自己创建的对象（issue、拉取请求、运行）可以关闭或取消；对别人的不行。
 
-  - key: pr.create
-    label: Open pull requests
+  - key: repo.maintainer
+    label: Maintainer
     descriptions:
-      zh: 创建拉取请求
-    risk: write
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
-  - key: pr.merge
-    # destructive, not write: merging changes the base branch, which is what everything else
-    # is built on. Opening a PR is reversible with one click; merging is not.
-    label: Merge pull requests
-    descriptions:
-      zh: 合并拉取请求
+      zh: 负责人
     risk: destructive
     params:
       - name: repo
         type: string
-        required: true
-        description: Repository as owner/name, or * for all.
         descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
+          zh: 仓库（owner/name）。
+    descriptions_long:
+      zh: >-
+        可以**改变已发布的东西**和仓库本身：合并拉取请求、创建与删除标签、
+        删除或重命名仓库，以及操作任何人的 issue / PR / 运行。
+        包含开发者的全部能力。
 
-  - key: pr.close
-    label: Close pull requests without merging
+  - key: org.admin
+    label: Organization admin
     descriptions:
-      zh: 关闭拉取请求（不合并）
+      zh: 组织管理员
     risk: write
     params:
-      - name: repo
+      - name: org
         type: string
-        required: true
-        description: Repository as owner/name, or * for all.
         descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
-  - key: repo.create
-    label: Create repositories
-    descriptions:
-      zh: 创建仓库
-    risk: write
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
-  - key: repo.delete
-    label: Delete repositories
-    descriptions:
-      zh: 删除仓库
-    risk: destructive
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
-  - key: tag.create
-    # write, and the event that STARTS a downstream chain: a tag is what a consumer
-    # subscribes to, so creating one tells every follower that a version exists.
-    label: Create tags (announces a version)
-    descriptions:
-      zh: 创建标签（宣告一个版本）
-    risk: write
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
-
-  - key: tag.delete
-    # destructive: the version disappears for everyone, including anyone already following it.
-    label: Delete tags
-    descriptions:
-      zh: 删除标签
-    risk: destructive
-    params:
-      - name: repo
-        type: string
-        required: true
-        description: Repository as owner/name, or * for all.
-        descriptions:
-          zh: 仓库（owner/name），或用 * 表示全部。
+          zh: 组织名，用 * 表示全部。
+    descriptions_long:
+      zh: >-
+        可以创建仓库。这是**组织级**权限而非仓库级：仓库尚不存在，没有可作用的对象。
 
 tools:
-  # ── local git (a workspace on disk; no GitHub call, no token) ────────────────
+  # ── 本地 git（工作区目录，不联网）─────────────────────────────────────────
   - name: git-ws-clone
     description: >-
-      Clone a repository into a new WORKSPACE and return its id. This is the only way to get a
-      workspace, and every other git-ws-* tool needs one. The id is random and belongs to this
-      session; it is not derived from the repository and cannot be guessed.
+      Clone a repository into a new WORKSPACE and return its id. The only way to get a workspace;
+      every other git-ws-* tool needs one.
     descriptions:
-      zh: >-
-        把仓库克隆到一个新的「工作区」并返回其 id。这是获取工作区的唯一途径，其他所有 git-ws-* 工具都需要它。
-        id 是随机的、归属本 session，不由仓库名推导，无法被猜到。
+      zh: 克隆仓库到新工作区并返回 id。获取工作区的唯一途径，其他 git-ws-* 工具都需要它。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          description: Repository as owner/name.
-          descriptions:
-            zh: 仓库（owner/name）。
-        ref:
-          type: string
-          description: Branch, tag or commit. Empty = the default branch.
-          descriptions:
-            zh: 分支、标签或提交。留空表示默认分支。
-        depth:
-          type: integer
-          description: >-
-            Clone depth. 0 (default) keeps the full history, so questions about older commits
-            have real answers; 1 is faster but forgets the past.
-          descriptions:
-            zh: 克隆深度。0（默认）保留完整历史，这样对旧提交的疑问才有真实答案；1 更快但会丢弃历史。
+        repo: {type: string, descriptions: {zh: 仓库（owner/name）。}}
+        ref: {type: string, descriptions: {zh: 分支、标签或提交；留空为默认分支。}}
+        depth: {type: integer, descriptions: {zh: 克隆深度；0 保留完整历史。}}
       required: [repo]
 
   - name: git-ws-workspace
     description: List this session's workspaces, or close one with `close`.
     descriptions:
-      zh: 列出本 session 的工作区；传 `close` 则关闭指定工作区。
+      zh: 列出本 session 的工作区；传 `close` 关闭某个工作区。
     input_schema:
       type: object
       properties:
-        close:
-          type: string
-          description: Workspace id to delete.
-          descriptions:
-            zh: 要删除的工作区 id。
+        close: {type: string, descriptions: {zh: 要删除的工作区 id。}}
 
   - name: git-ws-status
-    description: What changed in the workspace, against the checked-out commit.
+    description: What changed in the workspace.
     descriptions:
-      zh: 工作区相对当前检出的提交有哪些改动。
+      zh: 工作区的改动。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
       required: [workspace]
 
   - name: git-ws-patch
     description: >-
-      Edit files in the workspace with a patch. THE ONLY EDITING TOOL. Format: "*** Begin
-      Patch" / "*** Add File: path" (+lines) / "*** Update File: path" (@@ anchor, then ' '
-      context, '-' removed, '+' added) / "*** Delete File: path" / "*** End Patch". Applied
-      whole or not at all: a failing hunk leaves the tree untouched.
+      Edit files with a patch. THE ONLY EDITING TOOL. Applied whole or not at all.
     descriptions:
-      zh: >-
-        用补丁修改工作区文件。这是唯一的编辑工具。格式：Begin Patch / Add File（每行前缀 +）/
-        Update File（@@ 锚点，随后空格上下文、减号删除、加号新增）/ Delete File / End Patch。
-        整份生效或整份失败：任一 hunk 失败则工作区不变。
+      zh: "用补丁修改文件。**唯一的编辑工具**。整份生效或整份失败。"
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        patch:
-          type: string
-          descriptions:
-            zh: 补丁文本。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        patch: {type: string, descriptions: {zh: 补丁文本。}}
       required: [workspace, patch]
 
   - name: git-ws-read
-    description: Read a file from the workspace, with line numbers.
+    description: Read a file, with line numbers.
     descriptions:
-      zh: 读取工作区中的文件，带行号。
+      zh: 读取文件，带行号。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        path:
-          type: string
-          description: Path relative to the workspace root.
-          descriptions:
-            zh: 相对工作区根目录的路径。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        path: {type: string, descriptions: {zh: 相对路径。}}
       required: [workspace, path]
 
   - name: git-ws-list
     description: List every file in the workspace.
     descriptions:
-      zh: 列出工作区中的全部文件。
+      zh: 列出工作区全部文件。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
       required: [workspace]
 
   - name: git-ws-log
-    description: >-
-      The workspace's commit history — real authors and real commit dates, because this is a
-      real git checkout.
+    description: Real commit history — real authors, real dates.
     descriptions:
-      zh: 工作区的提交历史——真实的作者与提交时间，因为这就是一个真实的 git 检出。
+      zh: 真实提交历史——真实作者与时间。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        limit:
-          type: integer
-          descriptions:
-            zh: 最多返回条数（默认 20）。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        limit: {type: integer, descriptions: {zh: 最多条数（默认 20）。}}
       required: [workspace]
 
   - name: git-ws-diff
-    description: >-
-      The workspace's changes as a unified diff. Pass `path` to narrow it to one file. Capped at
-      2000 lines, and says so when the cap applies.
+    description: The workspace's changes as a unified diff.
     descriptions:
-      zh: 工作区的改动，unified diff 格式。传 `path` 可只看单个文件。上限 2000 行，触发时会说明。
+      zh: 工作区改动的 unified diff。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        path:
-          type: string
-          description: Limit the diff to this file.
-          descriptions:
-            zh: 只看这个文件。
-        staged:
-          type: boolean
-          description: Compare against the index instead of the working tree.
-          descriptions:
-            zh: 与索引比较，而不是与工作区比较。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        path: {type: string, descriptions: {zh: 只看该文件。}}
+        staged: {type: boolean, descriptions: {zh: 与索引比较。}}
       required: [workspace]
 
   - name: git-ws-blame
-    description: >-
-      Who last changed each line of a file, and when. Bounded to a line range (default 200
-      lines) because an unbounded blame of a large file buries the answer.
+    description: Who last changed each line, and when.
     descriptions:
-      zh: >-
-        文件中每一行最后是谁、什么时候改的。限定行范围（默认 200 行），因为无限制地 blame 大文件会把答案淹没。
+      zh: 每一行最后是谁、何时改的。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        path:
-          type: string
-          descriptions:
-            zh: 文件路径。
-        from:
-          type: integer
-          description: First line (1-based).
-          descriptions:
-            zh: 起始行（从 1 开始）。
-        to:
-          type: integer
-          description: Last line.
-          descriptions:
-            zh: 结束行。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        path: {type: string, descriptions: {zh: 文件路径。}}
+        from: {type: integer, descriptions: {zh: 起始行（从 1 开始）。}}
+        to: {type: integer, descriptions: {zh: 结束行。}}
       required: [workspace, path]
 
   - name: git-ws-commit
     description: >-
-      Commit the workspace's changes LOCALLY. Does not push, and may be called repeatedly — a
-      change is often several commits. Publish with gh-pr-create.
+      Commit LOCALLY. Does not push, and may be called repeatedly.
     descriptions:
-      zh: >-
-        在本地提交工作区的改动。不推送，可多次调用——一个改动常常需要多个提交。发布用 gh-pr-create。
+      zh: "**本地**提交。不推送，可多次调用。"
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        message:
-          type: string
-          descriptions:
-            zh: 提交信息。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        message: {type: string, descriptions: {zh: 提交信息。}}
       required: [workspace, message]
 
   - name: git-ws-pull
-    description: >-
-      Fast-forward the workspace to its remote. FAST-FORWARD ONLY: if local commits and the
-      remote have diverged, it reports that and changes nothing, because only the caller can
-      decide which to keep.
+    description: Fast-forward to the remote. FAST-FORWARD ONLY.
     descriptions:
-      zh: >-
-        将工作区快进到远端。只允许 fast-forward：若本地提交与远端已分叉，会报告并保持原样，
-        因为只有调用者能决定保留哪一边。
+      zh: "快进到远端。**只允许 fast-forward**。"
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        branch:
-          type: string
-          description: Branch to fast-forward from. Empty = the current branch.
-          descriptions:
-            zh: 从哪里快进。留空表示当前分支。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        branch: {type: string, descriptions: {zh: 从哪个分支快进；留空为当前分支。}}
       required: [workspace]
 
   - name: git-ws-reset
-    description: >-
-      Discard working-tree changes, restoring files to the checked-out commit. With `hard` it
-      also deletes untracked files — and a hard reset of the WHOLE workspace additionally needs
-      `confirm`, because that is the one operation here that destroys work never committed.
+    description: Discard working-tree changes. `hard` also deletes untracked files.
     descriptions:
-      zh: >-
-        丢弃工作区改动，把文件恢复到检出的提交。传 `hard` 还会删除未跟踪文件——而对整个工作区做 hard reset
-        还需要 `confirm`，因为这是唯一会销毁未提交工作的操作。
+      zh: 丢弃改动。`hard` 同时删除未跟踪文件。
     input_schema:
       type: object
       properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        path:
-          type: string
-          description: Limit the reset to this file.
-          descriptions:
-            zh: 只重置这个文件。
-        hard:
-          type: boolean
-          description: Also delete untracked files.
-          descriptions:
-            zh: 同时删除未跟踪文件。
-        confirm:
-          type: boolean
-          description: Required for a hard reset of the whole workspace.
-          descriptions:
-            zh: 对整个工作区做 hard reset 时必需。
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        path: {type: string, descriptions: {zh: 只重置该文件。}}
+        hard: {type: boolean, descriptions: {zh: 同时删除未跟踪文件。}}
+        confirm: {type: boolean, descriptions: {zh: 整个工作区 hard reset 时必需。}}
       required: [workspace]
 
-  # ── github platform ─────────────────────────────────────────────────────────
+  # ── issue 与拉取请求：共用一个编号空间，所以共用一套工具 ────────────────────
+  - name: gh-issue-create
+    description: >-
+      Open an ISSUE. (A pull request cannot be created here: it starts from a workspace, via
+      gh-pr-create.)
+    descriptions:
+      zh: "创建 **issue**。（此处不能创建拉取请求：拉取请求从工作区出发，用 gh-pr-create。）"
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        title: {type: string, descriptions: {zh: 标题。}}
+        body: {type: string, descriptions: {zh: 正文（Markdown）。}}
+        labels: {type: array, items: {type: string}, descriptions: {zh: 标签。}}
+      required: [repo, title]
+    requires: [repo.developer]
+
+  - name: gh-issue-list
+    description: >-
+      Issues AND pull requests, one number space. `kind` filters to just one: all (default),
+      issue, or pr.
+    descriptions:
+      zh: >-
+        issue **和**拉取请求，共用一个编号空间。`kind` 可只取一种：all（默认）、issue、pr。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        state: {type: string, descriptions: {zh: open | closed | all（默认 open）。}}
+        label: {type: string, descriptions: {zh: 只显示带该标签的。}}
+        kind: {type: string, descriptions: {zh: all | issue | pr（默认 all）。}}
+        limit: {type: integer, descriptions: {zh: 最多条数（默认 30）。}}
+      required: [repo]
+
+  - name: gh-issue-show
+    description: >-
+      One issue OR pull request, identified by issue_id. Reports which it is, plus branch and
+      mergeability when it is a pull request — so a caller need not know in advance.
+    descriptions:
+      zh: >-
+        按 issue_id 查看 issue **或**拉取请求。会说明它到底是哪种；若是拉取请求还会给出分支与
+        可合并性——调用者无需事先知道。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: issue 或 PR 的编号。}}
+      required: [repo, issue_id]
+
+  - name: gh-issue-comment
+    description: >-
+      Comment on an issue or pull request. With `path` and `line` it attaches to that line of the
+      diff — pull requests only; on an issue that is refused rather than downgraded.
+    descriptions:
+      zh: >-
+        在 issue 或拉取请求上评论。带 `path` 与 `line` 时附在该行 diff 上——仅拉取请求可用；
+        在 issue 上会被**拒绝**，而不是悄悄降级为普通评论。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: issue 或 PR 的编号。}}
+        body: {type: string, descriptions: {zh: 评论内容（Markdown）。}}
+        path: {type: string, descriptions: {zh: 行内评论指向的文件。}}
+        line: {type: integer, descriptions: {zh: 该文件中的行号。}}
+        side: {type: string, descriptions: {zh: RIGHT（改动后，默认）或 LEFT（原始）。}}
+      required: [repo, issue_id, body]
+    requires: [repo.developer]
+
+  - name: gh-issue-comments
+    description: >-
+      Everything said on an issue or pull request: the conversation AND the line comments,
+      labelled separately.
+    descriptions:
+      zh: "issue 或拉取请求上的全部发言：对话评论**与**行内评论，分别标注。"
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: issue 或 PR 的编号。}}
+      required: [repo, issue_id]
+
+  - name: gh-issue-close
+    description: >-
+      Close an issue or pull request. Reports which, and for a pull request says that it was closed
+      WITHOUT merging and the branch still exists. A developer may close only its own; a
+      maintainer may close anyone's.
+    descriptions:
+      zh: >-
+        关闭 issue 或拉取请求。会说明关的是哪种；若是拉取请求，还会说明是**未合并关闭**、分支仍在。
+        开发者只能关自己创建的；负责人可以关任何人的。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: issue 或 PR 的编号。}}
+      required: [repo, issue_id]
+    requires: [repo.developer]
+
+  # ── 拉取请求独有（issue 没有这些动作）─────────────────────────────────────
+  - name: gh-pr-create
+    description: >-
+      Publish a WORKSPACE as a pull request: commit, push a fresh branch pr/<id>, open the PR.
+      Returns the issue_id of the pull request it created.
+    descriptions:
+      zh: >-
+        把工作区发布为拉取请求：提交、推送新分支 pr/<id>、开 PR。
+        返回所创建拉取请求的 **issue_id**。
+    input_schema:
+      type: object
+      properties:
+        workspace: {type: string, descriptions: {zh: 工作区 id。}}
+        repo: {type: string, descriptions: {zh: 必须与工作区的仓库一致。}}
+        title: {type: string, descriptions: {zh: PR 标题（同时作为提交信息）。}}
+        body: {type: string, descriptions: {zh: PR 描述。}}
+        base: {type: string, descriptions: {zh: 目标分支；留空为默认分支。}}
+      required: [workspace, repo, title]
+    requires: [repo.developer]
+
+  - name: gh-pr-files
+    description: The files a pull request changes, with per-file counts.
+    descriptions:
+      zh: 拉取请求改动的文件列表与每个文件的增删行数。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: 拉取请求的 issue_id。}}
+      required: [repo, issue_id]
+
+  - name: gh-pr-diff
+    description: The whole pull request as one unified diff. Capped at 2000 lines.
+    descriptions:
+      zh: 整个拉取请求的 unified diff。上限 2000 行。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: 拉取请求的 issue_id。}}
+      required: [repo, issue_id]
+
+  - name: gh-pr-checks
+    description: CI status for a pull request.
+    descriptions:
+      zh: 拉取请求的 CI 状态。
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: 拉取请求的 issue_id。}}
+      required: [repo, issue_id]
+
+  - name: gh-pr-merge
+    description: >-
+      Merge a pull request. THE ONLY ACTION AN ISSUE CANNOT DO. A refused merge is an error, not
+      a success.
+    descriptions:
+      zh: "合并拉取请求。**issue 唯一做不到的动作**。被拒绝的合并会作为错误报告。"
+    input_schema:
+      type: object
+      properties:
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        issue_id: {type: integer, descriptions: {zh: 拉取请求的 issue_id。}}
+        method: {type: string, descriptions: {zh: merge | squash | rebase（默认 merge）。}}
+        title: {type: string, descriptions: {zh: 合并提交标题。}}
+        message: {type: string, descriptions: {zh: 合并提交信息。}}
+      required: [repo, issue_id]
+    requires: [repo.maintainer]
+
+  # ── 仓库、标签、账户 ────────────────────────────────────────────────────
   - name: gh-info
-    description: Repository metadata. Works without a token on a public repository.
+    description: Repository metadata. No token needed on a public repository.
     descriptions:
       zh: 仓库元信息。公开仓库无需令牌。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库（owner/name）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
       required: [repo]
 
   - name: gh-whoami
-    description: The token's identity, its scopes, and the remaining request budget.
+    description: The token's identity, scopes and remaining budget.
     descriptions:
-      zh: 令牌身份、权限范围与剩余请求配额。
-    input_schema:
-      type: object
-      properties: {}
+      zh: 令牌身份、权限范围与剩余配额。
+    input_schema: {type: object, properties: {}}
 
   - name: gh-orgs
     description: Organizations the caller belongs to.
     descriptions:
-      zh: 当前身份所属的组织。
-    input_schema:
-      type: object
-      properties: {}
+      zh: 所属组织。
+    input_schema: {type: object, properties: {}}
 
   - name: gh-repos
-    description: Repositories the caller can see, optionally for one organization.
+    description: Repositories the caller can see.
     descriptions:
-      zh: 当前身份可见的仓库，可限定某个组织。
+      zh: 可见仓库。
     input_schema:
       type: object
       properties:
-        org:
-          type: string
-          descriptions:
-            zh: 组织名。
-        type:
-          type: string
-          description: all | public | private | forks | sources | member
-          descriptions:
-            zh: all | public | private | forks | sources | member
-        visibility:
-          type: string
-          descriptions:
-            zh: all | public | private
+        org: {type: string, descriptions: {zh: 组织名。}}
+        type: {type: string, descriptions: {zh: all | public | private | forks | sources | member}}
+        visibility: {type: string, descriptions: {zh: all | public | private}}
 
   - name: gh-releases
     description: Releases for a repository; with `tag`, that one release.
     descriptions:
-      zh: 仓库的 release 列表；传 `tag` 则返回该 release 的详情。
+      zh: 仓库的 release 列表；传 `tag` 返回该条详情。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: 标签名。
-        limit:
-          type: integer
-          descriptions:
-            zh: 最多返回条数。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        tag: {type: string, descriptions: {zh: 标签名。}}
+        limit: {type: integer, descriptions: {zh: 最多条数。}}
       required: [repo]
 
   - name: gh-packages
@@ -565,49 +467,28 @@ tools:
     input_schema:
       type: object
       properties:
-        org:
-          type: string
-          descriptions:
-            zh: 组织名。
-        kind:
-          type: string
-          descriptions:
-            zh: container | npm | maven | rubygems | nuget（默认 container）
-        package:
-          type: string
-          descriptions:
-            zh: 包名。
+        org: {type: string, descriptions: {zh: 组织名。}}
+        kind: {type: string, descriptions: {zh: container | npm | maven | rubygems | nuget}}
+        package: {type: string, descriptions: {zh: 包名。}}
       required: [org]
 
   - name: gh-tag-create
     description: >-
-      Create an ANNOTATED tag. `message` is required: an annotated tag is a published event
-      with a description, and a release is built on one.
+      Create an ANNOTATED tag. `message` is required. MAINTAINER ONLY: a tag announces a version,
+      and it is paired with gh-tag-delete so that whoever publishes can also withdraw.
     descriptions:
-      zh: 创建附注标签。`message` 必填：附注标签是带说明的发布事件，release 也建立在它之上。
+      zh: >-
+        创建**附注**标签，`message` 必填。**仅负责人可用**：标签是对外宣告一个版本，
+        与 gh-tag-delete 配对——能发布的才能撤回。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: 标签名，例如 v1.2.3。
-        ref:
-          type: string
-          description: Branch, tag or commit to tag. Empty = the default branch.
-          descriptions:
-            zh: 要打标签的分支、标签或提交。留空表示默认分支。
-        message:
-          type: string
-          description: Required. The tag's description.
-          descriptions:
-            zh: 必填。标签的说明。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        tag: {type: string, descriptions: {zh: 标签名，例如 v1.2.3。}}
+        ref: {type: string, descriptions: {zh: 要打标签的 ref；留空为默认分支。}}
+        message: {type: string, descriptions: {zh: 必填。标签说明。}}
       required: [repo, tag, message]
-    requires: [tag.create]
+    requires: [repo.maintainer]
 
   - name: gh-tag-list
     description: Tags with the commit each points at.
@@ -616,292 +497,77 @@ tools:
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
+        repo: {type: string, descriptions: {zh: 仓库。}}
       required: [repo]
 
   - name: gh-tag-show
-    description: >-
-      One tag's annotation: the message, who tagged it and when. A separate call because
-      GitHub's tag LIST does not include the message.
+    description: One tag's annotation — message, tagger, date.
     descriptions:
-      zh: >-
-        单个标签的附注：说明、打标签的人与时间。之所以单独一个工具，是因为 GitHub 的标签列表不含附注。
+      zh: 单个标签的附注——说明、打标签的人、时间。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: 标签名。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        tag: {type: string, descriptions: {zh: 标签名。}}
       required: [repo, tag]
 
   - name: gh-tag-delete
     description: >-
-      Delete a tag AND its release. The two go together unconditionally: a release left behind
-      would still be announced at a tag nobody can check out. IRREVERSIBLE.
+      Delete a tag AND its release, unconditionally. IRREVERSIBLE.
     descriptions:
-      zh: 删除标签及其 release。两者无条件一起删除：留下的 release 仍会宣告一个无法检出的版本。不可撤销。
+      zh: "删除标签**及其 release**，无条件。不可撤销。"
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        tag:
-          type: string
-          descriptions:
-            zh: 标签名。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        tag: {type: string, descriptions: {zh: 标签名。}}
       required: [repo, tag]
-    requires: [tag.delete]
+    requires: [repo.maintainer]
 
   - name: gh-repo-create
-    description: Create a repository, under `org` or the authenticated user.
+    description: >-
+      Create a repository, under `org` or the authenticated user. Needs org.admin — creating a
+      repository is an ORGANIZATION decision, and there is no repository yet to scope a grant to.
     descriptions:
-      zh: 创建仓库（`org` 下或当前用户名下）。
+      zh: >-
+        创建仓库（在 `org` 下或当前用户名下）。需要 **org.admin**——创建仓库是**组织级**决定，
+        而且仓库尚不存在，没有可授权的对象。
     input_schema:
       type: object
       properties:
-        name:
-          type: string
-          descriptions:
-            zh: 仓库名。
-        org:
-          type: string
-          descriptions:
-            zh: 组织名（可选）。
-        description:
-          type: string
-          descriptions:
-            zh: 描述。
-        private:
-          type: boolean
-          descriptions:
-            zh: 是否私有。
-        auto_init:
-          type: boolean
-          descriptions:
-            zh: 是否创建初始提交。
+        name: {type: string, descriptions: {zh: 仓库名。}}
+        org: {type: string, descriptions: {zh: 组织名（可选）。}}
+        description: {type: string, descriptions: {zh: 描述。}}
+        private: {type: boolean, descriptions: {zh: 是否私有。}}
+        auto_init: {type: boolean, descriptions: {zh: 是否创建初始提交。}}
       required: [name]
-    requires: [repo.create]
+    requires: [org.admin]
 
   - name: gh-repo-rename
-    description: Rename a repository.
+    description: Rename a repository. Breaks every existing clone, CI ref and doc link.
     descriptions:
-      zh: 重命名仓库。
+      zh: 重命名仓库。会让所有既有 clone、CI 引用与文档链接失效。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 当前仓库。
-        name:
-          type: string
-          descriptions:
-            zh: 新名称。
+        repo: {type: string, descriptions: {zh: 当前仓库。}}
+        name: {type: string, descriptions: {zh: 新名称。}}
       required: [repo, name]
+    requires: [repo.maintainer]
 
   - name: gh-repo-delete
-    description: >-
-      Delete a repository. IRREVERSIBLE. `confirm` must equal the repository slug, so a wrong
-      slug cannot delete the wrong repository.
+    description: Delete a repository. IRREVERSIBLE. `confirm` must equal the slug.
     descriptions:
-      zh: 删除仓库。不可撤销。`confirm` 必须等于仓库全名，避免笔误删错仓库。
+      zh: 删除仓库。不可撤销。`confirm` 必须等于仓库全名。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 要删除的仓库。
-        confirm:
-          type: string
-          descriptions:
-            zh: 必须与 `repo` 完全相同。
+        repo: {type: string, descriptions: {zh: 要删除的仓库。}}
+        confirm: {type: string, descriptions: {zh: 必须与 repo 完全相同。}}
       required: [repo, confirm]
-    requires: [repo.delete]
+    requires: [repo.maintainer]
 
-  - name: gh-pr-create
-    description: >-
-      Publish a WORKSPACE as a pull request: commit it, push a fresh branch pr/<id>, open the
-      PR. THE ONLY WAY A CHANGE REACHES GITHUB — there is no commit tool and no push tool.
-    descriptions:
-      zh: >-
-        把「工作区」发布为拉取请求：提交、推送到新分支 pr/<id>、开 PR。这是改动进入 GitHub 的唯一途径——
-        没有提交工具，也没有推送工具。
-    input_schema:
-      type: object
-      properties:
-        workspace:
-          type: string
-          descriptions:
-            zh: 工作区 id。
-        repo:
-          type: string
-          description: Must match the workspace's repository.
-          descriptions:
-            zh: 必须与工作区的仓库一致。
-        title:
-          type: string
-          descriptions:
-            zh: PR 标题（同时作为提交信息）。
-        body:
-          type: string
-          descriptions:
-            zh: PR 描述。
-        base:
-          type: string
-          description: Branch to merge into. Empty = the repository's default branch.
-          descriptions:
-            zh: 合入的目标分支。留空表示仓库默认分支。
-      required: [workspace, repo, title]
-    requires: [pr.create]
-
-  - name: gh-pr-list
-    description: Pull requests, newest first.
-    descriptions:
-      zh: 拉取请求列表，最新的在前。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        state:
-          type: string
-          descriptions:
-            zh: open | closed | all（默认 open）
-      required: [repo]
-
-  - name: gh-pr-show
-    description: One pull request, including whether it can be merged.
-    descriptions:
-      zh: 单个拉取请求，含是否可合并。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
-  - name: gh-pr-files
-    description: >-
-      The files a pull request changes, with per-file counts. A file whose patch GitHub does not
-      send (binary, or too large) is marked as such rather than shown as an empty change.
-    descriptions:
-      zh: >-
-        PR 改动的文件列表与每个文件的增删行数。GitHub 未提供补丁的文件（二进制或过大）会被明确标注，
-        而不是显示为空改动。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
-  - name: gh-pr-diff
-    description: The whole pull request as one unified diff. Capped at 2000 lines, and says so.
-    descriptions:
-      zh: 整个 PR 的 unified diff。上限 2000 行，触发时会说明。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
-  - name: gh-pr-checks
-    description: CI status for a pull request, from both check runs and commit statuses.
-    descriptions:
-      zh: 拉取请求的 CI 状态，同时考虑 check runs 与 commit statuses。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-
-  - name: gh-pr-merge
-    description: Merge a pull request. A refused merge is reported as an error, not a success.
-    descriptions:
-      zh: 合并拉取请求。被拒绝的合并会作为错误报告，而不是假装成功。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-        method:
-          type: string
-          descriptions:
-            zh: merge | squash | rebase（默认 merge）
-        title:
-          type: string
-          descriptions:
-            zh: 合并提交标题。
-        message:
-          type: string
-          descriptions:
-            zh: 合并提交信息。
-      required: [repo, number]
-    requires: [pr.merge]
-
-  - name: gh-pr-close
-    description: Close a pull request without merging.
-    descriptions:
-      zh: 关闭拉取请求（不合并）。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
-    requires: [pr.close]
-
+  # ── CI：观察 ───────────────────────────────────────────────────────────
   - name: gh-workflow-list
     description: The repository's Actions workflows.
     descriptions:
@@ -909,432 +575,130 @@ tools:
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
+        repo: {type: string, descriptions: {zh: 仓库。}}
       required: [repo]
 
   - name: gh-run-list
-    description: Workflow runs, newest first, filterable by branch and trigger.
+    description: Workflow runs, newest first.
     descriptions:
-      zh: 工作流运行列表，最新的在前，可按分支与触发方式过滤。
+      zh: 工作流运行列表，最新的在前。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        branch:
-          type: string
-          descriptions:
-            zh: 只显示该分支的运行。
-        event:
-          type: string
-          descriptions:
-            zh: push | pull_request | workflow_dispatch | ...
-        limit:
-          type: integer
-          descriptions:
-            zh: 最多返回条数（默认 30）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        branch: {type: string, descriptions: {zh: 只显示该分支。}}
+        event: {type: string, descriptions: {zh: push | pull_request | workflow_dispatch | ...}}
+        limit: {type: integer, descriptions: {zh: 最多条数（默认 30）。}}
       required: [repo]
 
   - name: gh-run-jobs
     description: >-
-      Jobs and per-step status of a run — the LIVE view. GitHub publishes a job's LOG only after
-      the job finishes, so use gh-run-log for output.
+      Jobs and PER-STEP status of a run — the LIVE view. A job's log exists only after it finishes.
     descriptions:
-      zh: >-
-        某次运行的 job 与逐步状态——实时视图。GitHub 只在 job 结束后才提供日志，所以读输出请用 gh-run-log。
+      zh: "某次运行的 job 与**逐步**状态——实时视图。job 的日志只在其结束后才有。"
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        run:
-          type: integer
-          description: Run id from gh-run-list.
-          descriptions:
-            zh: 来自 gh-run-list 的运行 id。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        run: {type: integer, descriptions: {zh: 来自 gh-run-list 的运行 id。}}
       required: [repo, run]
 
   - name: gh-run-log
-    description: >-
-      A run's logs, one section per job. Available only once the jobs have finished — GitHub has
-      no API for a running job's output.
+    description: A run's logs, one section per job. Only after the jobs finish.
     descriptions:
-      zh: >-
-        某次运行的日志，按 job 分段。仅在 job 结束后可用——GitHub 没有提供运行中 job 输出的 API。
+      zh: 某次运行的日志，按 job 分段。仅在 job 结束后可用。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        run:
-          type: integer
-          description: Run id from gh-run-list.
-          descriptions:
-            zh: 来自 gh-run-list 的运行 id。
-        lines:
-          type: integer
-          description: Max lines per job (default 500).
-          descriptions:
-            zh: 每个 job 最多返回的行数（默认 500）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        run: {type: integer, descriptions: {zh: 运行 id。}}
+        lines: {type: integer, descriptions: {zh: 每个 job 最多行数（默认 500）。}}
       required: [repo, run]
 
   - name: gh-job-log
     description: >-
-      One job's log. Use this rather than gh-run-log when a run reports "unit failed" — it
-      returns that job's text directly instead of a zip of every job. The line cap keeps the LAST
-      lines, because a failure is at the end of a log. NOT available while the job runs: GitHub
-      has no API for a running job's output, and this fails with an explanation saying so.
+      One job's log, keeping the LAST lines. Not available while the job runs.
     descriptions:
-      zh: >-
-        单个 job 的日志。当运行报告「unit 失败」时用它，而不是 gh-run-log——它直接返回该 job 的文本，
-        而不是所有 job 的 zip。行数上限保留的是**最后**几行，因为失败在日志末尾。
-        运行中不可用：GitHub 没有提供运行中 job 输出的 API，本工具会明确说明这一点。
+      zh: "单个 job 的日志，保留**末尾**几行。运行中不可用。"
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        job:
-          type: integer
-          description: Job id from gh-run-jobs.
-          descriptions:
-            zh: 来自 gh-run-jobs 的 job id。
-        lines:
-          type: integer
-          description: Max lines, taken from the END of the log (default 500).
-          descriptions:
-            zh: 最多返回的行数，取日志**末尾**（默认 500）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        job: {type: integer, descriptions: {zh: 来自 gh-run-jobs 的 job id。}}
+        lines: {type: integer, descriptions: {zh: 最多行数，取末尾（默认 500）。}}
       required: [repo, job]
 
+  # ── CI：产物与操作 ─────────────────────────────────────────────────────
   - name: gh-artifacts
-    description: >-
-      The artifacts a run uploaded: id, name, size, and whether each has EXPIRED (an expired one
-      cannot be downloaded, so this says so before a caller tries).
+    description: The artifacts a run uploaded, flagging expired ones.
     descriptions:
-      zh: >-
-        某次运行上传的产物：id、名称、大小，以及是否已**过期**（过期的无法下载，先说明以免调用者白试）。
+      zh: 某次运行上传的产物，标出已过期的。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        run:
-          type: integer
-          description: Run id from gh-run-list.
-          descriptions:
-            zh: 来自 gh-run-list 的运行 id。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        run: {type: integer, descriptions: {zh: 运行 id。}}
       required: [repo, run]
 
   - name: gh-artifact-download
     description: >-
-      Download one artifact and store it in the tenant's OBJECT STORAGE, returning the object
-      name. The archive is not returned inline — an artifact is a zip of arbitrary size, and
-      base64 in a tool result would be unreadable and would flood the conversation.
+      Download one artifact into the tenant's OBJECT STORAGE and return the object name. Refuses
+      anything over max_bytes rather than truncating.
     descriptions:
       zh: >-
-        下载单个产物并存入租户的**对象存储**，返回对象名。压缩包不会直接内联返回——产物大小不定，
-        在工具结果里放 base64 既读不了又会淹没对话。
+        下载单个产物存入租户**对象存储**并返回对象名。超过 max_bytes 会拒绝而不是截断。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        artifact:
-          type: integer
-          description: Artifact id from gh-artifacts.
-          descriptions:
-            zh: 来自 gh-artifacts 的产物 id。
-        name:
-          type: string
-          description: Used in the stored object name.
-          descriptions:
-            zh: 用于生成存储对象名。
-        max_bytes:
-          type: integer
-          description: Refuse anything larger (default 64 MiB).
-          descriptions:
-            zh: 超过此大小则拒绝（默认 64 MiB）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        artifact: {type: integer, descriptions: {zh: 来自 gh-artifacts 的产物 id。}}
+        name: {type: string, descriptions: {zh: 用于生成对象名。}}
+        max_bytes: {type: integer, descriptions: {zh: 超过则拒绝（默认 64 MiB）。}}
       required: [repo, artifact]
 
   - name: gh-run-rerun
     description: >-
-      Rerun a run. Defaults to `failed_only: true` — a rerun is almost always "the flaky one
-      failed", and rerunning everything throws away the jobs that already passed. A rerun starts
-      a new ATTEMPT on the same run id.
+      Rerun, defaulting to failed-only. A developer may rerun only its own runs; a maintainer may
+      rerun anyone's.
     descriptions:
       zh: >-
-        重跑某次运行。默认 `failed_only: true`——重跑几乎总是因为「那个 flaky 的失败了」，
-        全部重跑会丢掉已经通过的 job。重跑会在同一个 run id 上开始新的 **attempt**。
+        重跑，默认只重跑失败 job。开发者只能重跑自己触发的；负责人可以重跑任何人的。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        run:
-          type: integer
-          description: Run id from gh-run-list.
-          descriptions:
-            zh: 来自 gh-run-list 的运行 id。
-        failed_only:
-          type: boolean
-          description: Rerun only the failed jobs (default true).
-          descriptions:
-            zh: 只重跑失败的 job（默认 true）。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        run: {type: integer, descriptions: {zh: 运行 id。}}
+        failed_only: {type: boolean, descriptions: {zh: 只重跑失败的（默认 true）。}}
       required: [repo, run]
-    requires: [run.rerun]
+    requires: [repo.developer]
 
   - name: gh-run-cancel
     description: >-
-      Cancel a run. Cancellation is a REQUEST, not an instant stop: GitHub lets the step in
-      progress finish, so poll gh-run-jobs until the job reports completed.
+      Cancel a run. A REQUEST, not an instant stop. A developer may cancel only its own runs.
     descriptions:
-      zh: >-
-        取消某次运行。取消是**请求**而非立即停止：GitHub 会让当前步骤走完，因此要轮询 gh-run-jobs
-        直到 job 显示 completed。
+      zh: "取消运行。是**请求**而非立即停止。开发者只能取消自己触发的。"
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        run:
-          type: integer
-          description: Run id from gh-run-list.
-          descriptions:
-            zh: 来自 gh-run-list 的运行 id。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        run: {type: integer, descriptions: {zh: 运行 id。}}
       required: [repo, run]
-    requires: [run.cancel]
+    requires: [repo.developer]
 
   - name: gh-run-dispatch
     description: >-
-      Trigger a workflow_dispatch. `workflow` is the file name (ci.yml) or the numeric id.
-      `ref` defaults to the repository's default branch. Returns the run id it created, so the
-      caller can follow it rather than guess.
+      Trigger a workflow_dispatch. Returns the run id it created.
     descriptions:
-      zh: >-
-        触发 workflow_dispatch。`workflow` 为文件名（ci.yml）或数字 id。`ref` 默认取仓库默认分支。
-        返回它创建出的 run id，调用者可直接跟进而不必猜。
+      zh: 触发 workflow_dispatch。返回所创建的 run id。
     input_schema:
       type: object
       properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        workflow:
-          type: string
-          description: Workflow file name or id.
-          descriptions:
-            zh: 工作流文件名或 id。
-        ref:
-          type: string
-          description: Branch or tag. Empty = default branch.
-          descriptions:
-            zh: 分支或标签。留空表示默认分支。
-        inputs:
-          type: object
-          description: The workflow's declared inputs.
-          descriptions:
-            zh: 工作流声明的输入参数。
+        repo: {type: string, descriptions: {zh: 仓库。}}
+        workflow: {type: string, descriptions: {zh: 工作流文件名或 id。}}
+        ref: {type: string, descriptions: {zh: 分支或标签；留空为默认分支。}}
+        inputs: {type: object, descriptions: {zh: 工作流声明的输入。}}
       required: [repo, workflow]
-    requires: [run.dispatch]
-
-  - name: gh-issue-create
-    description: >-
-      Open an issue. `title` is required — an issue without one cannot be found or discussed.
-    descriptions:
-      zh: 创建 issue。`title` 必填——没有标题的 issue 既找不到也无法讨论。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        title:
-          type: string
-          descriptions:
-            zh: 标题。
-        body:
-          type: string
-          descriptions:
-            zh: 正文（Markdown）。
-        labels:
-          type: array
-          items: {type: string}
-          descriptions:
-            zh: 标签。
-      required: [repo, title]
-    requires: [issue.create]
-
-  - name: gh-issue-list
-    description: >-
-      Issues, newest first. Pull requests are filtered OUT: GitHub returns both from this
-      endpoint, and a caller asking for issues does not want pull requests mixed in.
-    descriptions:
-      zh: >-
-        issue 列表，最新的在前。拉取请求会被**过滤掉**：GitHub 这个端点会同时返回两者，
-        而要 issue 的调用者并不想把 PR 混进来。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        state:
-          type: string
-          descriptions:
-            zh: open | closed | all（默认 open）
-        label:
-          type: string
-          descriptions:
-            zh: 只显示带该标签的。
-        limit:
-          type: integer
-          descriptions:
-            zh: 最多返回条数（默认 30）。
-      required: [repo]
-
-  - name: gh-issue-show
-    description: >-
-      One issue WITH its comments. The discussion is included because an issue without it is
-      only the request, not the decision.
-    descriptions:
-      zh: >-
-        单个 issue，**含评论**。之所以带上讨论，是因为没有讨论的 issue 只是请求，还没有结论。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: issue 编号。
-      required: [repo, number]
-
-  - name: gh-issue-comment
-    description: Comment on an issue.
-    descriptions:
-      zh: 在 issue 上评论。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: issue 编号。
-        body:
-          type: string
-          descriptions:
-            zh: 评论内容（Markdown）。
-      required: [repo, number, body]
-    requires: [issue.comment]
-
-  - name: gh-issue-close
-    description: Close an issue.
-    descriptions:
-      zh: 关闭 issue。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: issue 编号。
-      required: [repo, number]
-
-  - name: gh-pr-comment
-    description: >-
-      Comment on a pull request. With `path` and `line` it attaches to that line of the diff
-      (side defaults to RIGHT, the changed file); without them it is a conversation comment.
-      Giving only one of path/line is refused, because half a location is a mistake.
-    descriptions:
-      zh: >-
-        在拉取请求上评论。带 `path` 与 `line` 时附在该行 diff 上（side 默认 RIGHT，即改动后的文件）；
-        都不带则是普通对话评论。只给 path 或只给 line 会被拒绝，因为半个位置本身就是错误。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-        body:
-          type: string
-          descriptions:
-            zh: 评论内容（Markdown）。
-        path:
-          type: string
-          description: File to comment on, for a line comment.
-          descriptions:
-            zh: 行内评论指向的文件。
-        line:
-          type: integer
-          description: Line number in that file.
-          descriptions:
-            zh: 该文件中的行号。
-        side:
-          type: string
-          description: RIGHT (changed file, default) or LEFT (original).
-          descriptions:
-            zh: RIGHT（改动后的文件，默认）或 LEFT（原始文件）。
-      required: [repo, number, body]
-    requires: [issue.comment]
-
-  - name: gh-pr-comments
-    description: >-
-      What has been said on a pull request: BOTH the conversation and the line comments, labelled
-      separately. Showing only one would let a caller reply into a thread it cannot see.
-    descriptions:
-      zh: >-
-        PR 上的全部发言：**对话评论与行内评论都有**，并分别标注。只显示一种会让调用者对着看不见的
-        讨论串回复。
-    input_schema:
-      type: object
-      properties:
-        repo:
-          type: string
-          descriptions:
-            zh: 仓库。
-        number:
-          type: integer
-          descriptions:
-            zh: PR 编号。
-      required: [repo, number]
+    requires: [repo.developer]
 
 # Events this extension publishes, so a session can follow a repository and be woken when
 # something ships.

@@ -12,68 +12,12 @@ import (
 
 // Reviewing pull requests. These are reads except merge and close, which are gated.
 
-func (t *toolset) prList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	c, repo, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	list, err := c.ListPRs(ctx, argStr(args, "state"))
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s: %v", repo, err)
-	}
-	var b strings.Builder
-	for _, pr := range list {
-		fmt.Fprintf(&b, "#%d %s [%s] %s -> %s\n", pr.Number, pr.Title, pr.State, pr.Head, pr.Base)
-	}
-	if len(list) == 0 {
-		b.WriteString("(no pull requests)\n")
-	}
-	fmt.Fprintf(&b, "\n%d pull requests", len(list))
-	return extension.ToolResultData{
-		Content: b.String(),
-		Data:    map[string]any{"prs": list, "count": len(list)},
-	}, nil
-}
-
-func (t *toolset) prShow(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	c, repo, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	n := argInt(args, "number")
-	if n <= 0 {
-		return extension.ToolResultData{}, errArg(`"number" is required`)
-	}
-	pr, err := c.PR(ctx, n)
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s#%d: %v", repo, n, err)
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "#%d %s\n", pr.Number, pr.Title)
-	fmt.Fprintf(&b, "%s\n", pr.HTMLURL)
-	fmt.Fprintf(&b, "state: %s   %s -> %s\n", pr.State, pr.Head, pr.Base)
-	if pr.Merged {
-		b.WriteString("merged\n")
-	}
-	// Mergeable is tri-state: nil means GitHub is still working it out, and reporting that as
-	// "no" would be wrong.
-	if pr.Mergeable != nil {
-		fmt.Fprintf(&b, "mergeable: %v\n", *pr.Mergeable)
-	} else {
-		b.WriteString("mergeable: (computing)\n")
-	}
-	return extension.ToolResultData{
-		Content: b.String(),
-		Data:    map[string]any{"pr": pr},
-	}, nil
-}
-
 func (t *toolset) prChecks(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	n := argInt(args, "number")
+	n := argInt(args, "issue_id")
 	if n <= 0 {
 		return extension.ToolResultData{}, errArg(`"number" is required`)
 	}
@@ -105,10 +49,10 @@ func (t *toolset) prMerge(ctx context.Context, args map[string]any, session, ten
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := t.requireRepo(ctx, PermPRMerge, repo); err != nil {
+	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
-	n := argInt(args, "number")
+	n := argInt(args, "issue_id")
 	if n <= 0 {
 		return extension.ToolResultData{}, errArg(`"number" is required`)
 	}
@@ -126,32 +70,6 @@ func (t *toolset) prMerge(ctx context.Context, args map[string]any, session, ten
 	}, nil
 }
 
-func (t *toolset) prClose(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	repo, err := required(args, "repo")
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	if err := t.requireRepo(ctx, PermPRClose, repo); err != nil {
-		return extension.ToolResultData{}, err
-	}
-	n := argInt(args, "number")
-	if n <= 0 {
-		return extension.ToolResultData{}, errArg(`"number" is required`)
-	}
-	c, _, err := t.clientFor(tenant, args)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	pr, err := c.ClosePR(ctx, n)
-	if err != nil {
-		return extension.ToolResultData{}, errFailed("%s#%d: %v", repo, n, err)
-	}
-	return extension.ToolResultData{
-		Content: fmt.Sprintf("closed #%d\n%s", pr.Number, pr.HTMLURL),
-		Data:    map[string]any{"pr": pr},
-	}, nil
-}
-
 // Repository administration.
 
 func (t *toolset) repoCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
@@ -164,7 +82,7 @@ func (t *toolset) repoCreate(ctx context.Context, args map[string]any, session, 
 	if org != "" {
 		slug = org + "/" + name
 	}
-	if err := t.requireRepo(ctx, PermRepoCreate, slug); err != nil {
+	if err := t.requireRepo(ctx, PermOrgAdmin, slug); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	c, err := t.accountClient(tenant)
@@ -210,7 +128,7 @@ func (t *toolset) repoDelete(ctx context.Context, args map[string]any, session, 
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := t.requireRepo(ctx, PermRepoDelete, repo); err != nil {
+	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
 

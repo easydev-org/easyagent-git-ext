@@ -53,9 +53,9 @@ func TestE2ECIOps(t *testing.T) {
 	defer cancel()
 	tenant, session := "alice", "ciops"
 	ctx = extension.WithGrants(ctx, []*easybus.Grant{
-		{Key: PermRunDispatch, Params: easybus.Struct(map[string]any{"repo": repo})},
-		{Key: PermRunRerun, Params: easybus.Struct(map[string]any{"repo": repo})},
-		{Key: PermRunCancel, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 
 	t.Log("1. gh-run-dispatch")

@@ -48,7 +48,7 @@ func TestE2EWorkspaceFlow(t *testing.T) {
 	defer cancel()
 	tenant, session := "alice", "flow"
 	ctx = extension.WithGrants(ctx, []*easybus.Grant{
-		{Key: PermPRCreate, Params: easybus.Struct(map[string]any{"repo": repo})},
+		{Key: PermDeveloper, Params: easybus.Struct(map[string]any{"repo": repo})},
 	})
 
 	t.Log("1. git-ws-clone")

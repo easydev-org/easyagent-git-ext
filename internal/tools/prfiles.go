@@ -16,7 +16,7 @@ func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, ten
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	n := argInt(args, "number")
+	n := argInt(args, "issue_id")
 	if n <= 0 {
 		return extension.ToolResultData{}, errArg(`"number" is required`)
 	}
@@ -57,7 +57,7 @@ func (t *toolset) prDiff(ctx context.Context, args map[string]any, session, tena
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	n := argInt(args, "number")
+	n := argInt(args, "issue_id")
 	if n <= 0 {
 		return extension.ToolResultData{}, errArg(`"number" is required`)
 	}

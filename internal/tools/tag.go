@@ -34,7 +34,7 @@ func (t *toolset) tagCreate(ctx context.Context, args map[string]any, session, t
 			`"message" is required: tags here are annotated, because an annotated tag is a published ` +
 				`event with a description and a release is built on one`)
 	}
-	if err := t.requireRepo(ctx, PermTagCreate, repo); err != nil {
+	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	c, _, err := t.clientFor(tenant, args)
@@ -89,7 +89,7 @@ func (t *toolset) tagDelete(ctx context.Context, args map[string]any, session, t
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	if err := t.requireRepo(ctx, PermTagDelete, repo); err != nil {
+	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
 	c, _, err := t.clientFor(tenant, args)

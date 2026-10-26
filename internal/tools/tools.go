@@ -9,6 +9,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
@@ -45,36 +46,31 @@ type Deps struct {
 type Handler func(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error)
 
 // Permission keys this extension declares.
+//
+// THREE KEYS, not twelve. The granular ones answered "what kind of object is this?"; the question
+// a reviewer actually decides is "is this session trusted with this repository, and how far?".
+//
+// The line between the two repository levels:
+//
+//	developer   may move the repository FORWARD — propose a change, discuss it, run CI
+//	maintainer  may also move it BACKWARD — merge to the trunk, rewrite what was already
+//	            published, delete the repository
+//
+// A maintainer grant also satisfies a developer check (see requireRepo); the reverse is false.
 const (
-	// PermPRCreate opens pull requests. Scoped to a repository.
-	PermPRCreate = "pr.create"
-	// PermPRMerge merges pull requests. Destructive, because it changes the base branch.
-	PermPRMerge = "pr.merge"
-	// PermPRClose closes pull requests without merging.
-	PermPRClose = "pr.close"
-	// PermRepoCreate creates a repository.
-	PermRepoCreate = "repo.create"
-	// PermRepoDelete deletes a repository. Destructive and irreversible.
-	PermRepoDelete = "repo.delete"
-	// PermTagCreate creates tags — the event a downstream subscription reacts to.
-	PermTagCreate = "tag.create"
-	// PermRunRerun reruns a workflow run. Spends CI minutes, so it is not a free operation.
-	PermRunRerun = "run.rerun"
-	// PermRunCancel cancels a run. Destructive: the work in flight never produces a result.
-	PermRunCancel = "run.cancel"
-	// PermRunDispatch triggers a workflow. It can start a deployment, which is why it is
-	// separate from merely reading runs.
-	PermRunDispatch = "run.dispatch"
-	// PermIssueCreate opens issues — the way work gets requested.
-	PermIssueCreate = "issue.create"
-	// PermIssueComment writes a comment on an issue OR a pull request. Gated because a comment
-	// notifies every watcher and appears on a public timeline: it is speaking, not noting.
-	PermIssueComment = "issue.comment"
-	// PermTagDelete deletes a tag. Destructive: a released version disappears with it.
-	PermTagDelete = "tag.delete"
-	// NOTE: there is deliberately NO release.create permission. Releases are published by CI,
-	// not by a caller, so no grant would make the operation allowed — declaring a key would only
-	// invite somebody to ask for one.
+	// PermDeveloper proposes and discusses: open issues, comment, open pull requests, run CI.
+	// Scoped to one repository.
+	PermDeveloper = "repo.developer"
+	// PermMaintainer changes what is already published and the repository itself: merge, delete
+	// a tag, delete or rename the repository.
+	PermMaintainer = "repo.maintainer"
+	// PermOrgAdmin creates repositories. A separate key rather than a repository permission
+	// because the repository does not exist yet — there is no repo scope to grant it on, and
+	// creating one is a decision about the ORGANIZATION, not about any existing repository.
+	PermOrgAdmin = "org.admin"
+	// NOTE: there is deliberately NO key for publishing a release. Releases are published by CI,
+	// so no grant would make a hand-made one allowed; declaring a key would only invite somebody
+	// to ask for one.
 )
 
 // requireMap names the permissions each tool needs.
@@ -83,19 +79,25 @@ const (
 // not merge should still be able to LOOK at the pull request, and gating reads would make every
 // grant also a grant of visibility.
 var requireMap = map[string][]string{
-	"gh-pr-create":     {PermPRCreate},
-	"gh-pr-merge":      {PermPRMerge},
-	"gh-pr-close":      {PermPRClose},
-	"gh-repo-create":   {PermRepoCreate},
-	"gh-repo-delete":   {PermRepoDelete},
-	"gh-tag-create":    {PermTagCreate},
-	"gh-tag-delete":    {PermTagDelete},
-	"gh-run-rerun":     {PermRunRerun},
-	"gh-run-cancel":    {PermRunCancel},
-	"gh-run-dispatch":  {PermRunDispatch},
-	"gh-issue-create":  {PermIssueCreate},
-	"gh-issue-comment": {PermIssueComment},
-	"gh-pr-comment":    {PermIssueComment},
+	// Developer: propose, discuss, run CI.
+	"gh-issue-create":  {PermDeveloper},
+	"gh-issue-comment": {PermDeveloper},
+	"gh-pr-create":     {PermDeveloper},
+	"gh-run-dispatch":  {PermDeveloper},
+	"gh-run-rerun":     {PermDeveloper},
+	"gh-run-cancel":    {PermDeveloper},
+	// Close is a developer action on your OWN work; requireOwnership adds that condition on top.
+	"gh-issue-close": {PermDeveloper},
+
+	// Maintainer: change what is already published, or the repository itself.
+	"gh-pr-merge":    {PermMaintainer},
+	"gh-tag-create":  {PermMaintainer},
+	"gh-tag-delete":  {PermMaintainer},
+	"gh-repo-delete": {PermMaintainer},
+	"gh-repo-rename": {PermMaintainer},
+
+	// Organization level: the repository does not exist yet.
+	"gh-repo-create": {PermOrgAdmin},
 }
 
 // RequireMap returns a copy so a caller cannot mutate the shared table.
@@ -145,13 +147,12 @@ func Registry(d Deps) map[string]Handler {
 		"gh-repo-rename": t.repoRename,
 		"gh-repo-delete": t.repoDelete,
 
-		// The only way out: a pull request, built from a workspace branch.
+		// Pull-request-only actions. Everything else about a pull request — its title,
+		// body, comments, closing — is an ISSUE operation, because GitHub models a pull
+		// request as a kind of issue sharing one numbering space. See items.go.
 		"gh-pr-create": t.prCreate,
-		"gh-pr-list":   t.prList,
-		"gh-pr-show":   t.prShow,
 		"gh-pr-checks": t.prChecks,
 		"gh-pr-merge":  t.prMerge,
-		"gh-pr-close":  t.prClose,
 
 		// What a pull request CHANGED. Without these, reviewing a PR means reading its title.
 		"gh-pr-files": t.prFiles,
@@ -169,14 +170,14 @@ func Registry(d Deps) map[string]Handler {
 		"gh-run-cancel":        t.runCancel,
 		"gh-run-dispatch":      t.runDispatch,
 
-		// Issues and comments: saying something, not just looking.
-		"gh-issue-create":  t.issueCreate,
-		"gh-issue-list":    t.issueList,
-		"gh-issue-show":    t.issueShow,
-		"gh-issue-comment": t.issueComment,
-		"gh-issue-close":   t.issueClose,
-		"gh-pr-comment":    t.commentPR,
-		"gh-pr-comments":   t.commentsPR,
+		// ONE set of tools for issues AND pull requests: one number, one object, so a caller
+		// need not know in advance which it holds.
+		"gh-issue-create":   t.issueCreate,
+		"gh-issue-list":     t.issueList,
+		"gh-issue-show":     t.issueShow,
+		"gh-issue-comment":  t.issueComment,
+		"gh-issue-comments": t.issueComments,
+		"gh-issue-close":    t.issueClose,
 	}
 }
 
@@ -198,7 +199,33 @@ func (t *toolset) requireRepo(ctx context.Context, perm string, repo string) err
 			Message: "a repository (owner/name) is required",
 		}
 	}
-	return extension.Require(ctx, perm, map[string]string{"repo": repo})
+	target := map[string]string{"repo": repo}
+	if extension.Allowed(ctx, perm, target) {
+		return nil
+	}
+	// org.admin is scoped to an ORGANIZATION, not to a repository: creating "acme/new" asks about
+	// the org named "acme". Checking it against {repo: ...} would never match, so a repository
+	// creation would be impossible even with the grant.
+	if perm == PermOrgAdmin {
+		owner := repo
+		if i := strings.IndexByte(repo, '/'); i > 0 {
+			owner = repo[:i]
+		}
+		if extension.Allowed(ctx, PermOrgAdmin, map[string]string{"org": owner}) {
+			return nil
+		}
+		return &extension.PermissionDenied{
+			Key: PermOrgAdmin, Target: map[string]string{"org": owner},
+			Granted: extension.GrantsFor(ctx, PermOrgAdmin),
+		}
+	}
+	// LEVELS, one direction only: a maintainer is trusted with everything a developer is, so a
+	// maintainer grant satisfies a developer check. The reverse would mean a developer could
+	// merge, which is the distinction the two levels exist to draw.
+	if perm == PermDeveloper && extension.Allowed(ctx, PermMaintainer, target) {
+		return nil
+	}
+	return &extension.PermissionDenied{Key: perm, Target: target, Granted: extension.GrantsFor(ctx, perm)}
 }
 
 // errArg builds a consistent invalid-argument error.

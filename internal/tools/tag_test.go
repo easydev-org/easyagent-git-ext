@@ -52,7 +52,7 @@ func TestReleaseToolsAreAbsent(t *testing.T) {
 // announced release behind a deleted tag — was the bug.
 func TestTagDeleteHasNoWithTagOption(t *testing.T) {
 	reg := Registry(Deps{})
-	ctx := grant(context.Background(), PermTagDelete, "o/r")
+	ctx := grant(context.Background(), PermMaintainer, "o/r")
 	// A caller that still passes with_tag must not be able to opt OUT of removing the release.
 	// The handler ignores the argument and calls DeleteTagAndRelease regardless; this asserts
 	// the argument is not consulted by checking the tool is driven purely by tag.delete.
