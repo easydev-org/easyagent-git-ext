@@ -16,6 +16,7 @@
 package workspace
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -105,6 +106,15 @@ var IDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // Clone creates a workspace and returns it.
 func (m *Manager) Clone(o CloneOptions) (*Workspace, error) {
+	return m.CloneCtx(context.Background(), o)
+}
+
+// CloneCtx is Clone with a context, so the clone reports its own progress.
+//
+// go-git's Progress writer receives the text a git clone prints, and newGitProgress turns its
+// percentages into updates. Passing nil keeps go-git silent, which is what a caller with no
+// listener wants.
+func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, error) {
 	if o.Repo == "" || o.URL == "" {
 		return nil, fmt.Errorf("repo and url are required")
 	}
@@ -115,6 +125,10 @@ func (m *Manager) Clone(o CloneOptions) (*Workspace, error) {
 	dir := filepath.Join(m.root, id)
 
 	co := &git.CloneOptions{URL: o.URL, Depth: o.Depth}
+	if _, listening := ctx.Value(progressKey{}).(PhaseReporter); listening {
+		co.Progress = newGitProgress(ctx)
+	}
+	workspacePhase(ctx, "cloning")
 	if o.Ref != "" {
 		// Try as a branch, then a tag: a caller says "v1.2.3" without saying which it is.
 		co.ReferenceName = plumbing.NewBranchReferenceName(o.Ref)
@@ -138,6 +152,7 @@ func (m *Manager) Clone(o CloneOptions) (*Workspace, error) {
 			return nil, fmt.Errorf("clone %s: %w", o.Repo, wrapCloneErr(err))
 		}
 	}
+	workspacePhase(ctx, "checking out files")
 	// A single-branch clone is fine, but it must not be SHALLOW unless asked: a shallow
 	// checkout cannot answer questions about older commits, and this package exists so that
 	// history questions have real answers.

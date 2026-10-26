@@ -59,7 +59,7 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 	if rerr != nil {
 		return extension.ToolResultData{}, rerr
 	}
-	w, cerr := t.deps.Workspaces.Clone(CloneParams{
+	w, cerr := t.deps.Workspaces.CloneCtx(progressCtx(ctx), CloneParams{
 		Tenant: tenant, Session: session, Repo: repo, URL: remote,
 		Ref: argStr(args, "ref"), Token: t.token(tenant), Depth: argInt(args, "depth"),
 	})
