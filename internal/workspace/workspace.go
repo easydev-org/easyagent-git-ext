@@ -128,7 +128,6 @@ func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, err
 	if _, listening := ctx.Value(progressKey{}).(PhaseReporter); listening {
 		co.Progress = newGitProgress(ctx)
 	}
-	workspacePhase(ctx, "cloning")
 	if o.Ref != "" {
 		// Try as a branch, then a tag: a caller says "v1.2.3" without saying which it is.
 		co.ReferenceName = plumbing.NewBranchReferenceName(o.Ref)
@@ -152,7 +151,6 @@ func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, err
 			return nil, fmt.Errorf("clone %s: %w", o.Repo, wrapCloneErr(err))
 		}
 	}
-	workspacePhase(ctx, "checking out files")
 	// A single-branch clone is fine, but it must not be SHALLOW unless asked: a shallow
 	// checkout cannot answer questions about older commits, and this package exists so that
 	// history questions have real answers.

@@ -14,6 +14,15 @@ type PhaseReporter interface {
 	Phase(name string)
 }
 
+// TextReporter receives a line of output verbatim.
+//
+// Separate from PhaseReporter because the two are different promises: a phase is the extension's
+// own word for a stage, while this is somebody else's line — git's, unchanged — that must not be
+// relabelled.
+type TextReporter interface {
+	Text(line string)
+}
+
 // WithPhaseReporter attaches a reporter to the context.
 func WithPhaseReporter(ctx context.Context, r PhaseReporter) context.Context {
 	if r == nil {

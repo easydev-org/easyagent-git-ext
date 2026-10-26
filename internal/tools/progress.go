@@ -124,6 +124,26 @@ func (r *Reporter) Percent(phase string, fraction float64) {
 	r.send(&easybus.ToolProgress{Phase: ptr(phase), Progress: &f})
 }
 
+// Text forwards a line of output from another program, unchanged.
+//
+// Rate-limited like Percent, because git writes its progress far faster than a session can read
+// it: a fifty-megabyte clone emits thousands of carriage-return updates and forwarding each one
+// would flood the bus. What is sent is git's own line, not a paraphrase — no field is rewritten.
+func (r *Reporter) Text(line string) {
+	if r == nil || r.send == nil || line == "" {
+		return
+	}
+	now := time.Now()
+	r.mu.Lock()
+	if now.Sub(r.lastAt) < minProgressInterval {
+		r.mu.Unlock()
+		return
+	}
+	r.lastAt = now
+	r.mu.Unlock()
+	r.send(&easybus.ToolProgress{Text: ptr(line)})
+}
+
 // Note sends free text — something worth saying that is neither a phase change nor a percentage.
 func (r *Reporter) Note(text string) {
 	if r == nil || r.send == nil || text == "" {

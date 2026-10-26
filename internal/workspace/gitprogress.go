@@ -3,18 +3,19 @@ package workspace
 import (
 	"context"
 	"io"
-	"strconv"
 	"strings"
 )
 
-// gitProgress turns git's own progress text into phase updates.
+// gitProgress forwards git's own output, unchanged.
 //
-// go-git writes what `git clone` prints — "Receiving objects:  42% (21/50)" — and separates the
-// updates with carriage returns. Forwarding the percentage is what makes a bar move; without it a
-// clone is one message and then silence, which is the case worth fixing.
+// WHY NOT PARSE IT: the first attempt lifted the percentage out of "Receiving objects:  42%
+// (21/50)" and re-labelled it ("receiving objects", 0.42). That is the extension rewriting git —
+// a reader who knows what a clone looks like then sees something they did not ask for, and every
+// line git prints that ISN'T "stage: n%" was silently dropped. The output below is what
+// `git clone` prints, which is the thing people already know how to read.
 //
-// The reporter's own rate limit applies (one update per 400ms), so git may emit a hundred lines
-// here and the bus sees a handful.
+// One line per update, because git separates them with carriage returns and a caller reading a
+// transcript should not receive half an overwritten line.
 type gitProgress struct {
 	ctx context.Context
 	buf []byte
@@ -35,41 +36,14 @@ func (g *gitProgress) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// flush parses one line and reports the percentage, if there is one.
-//
-// Lines without a percentage ("done.", "remote: Enumerating objects") are ignored rather than
-// guessed at: a phase with no number is what Phase() is for, and inventing a number would be
-// worse than saying nothing.
+// flush emits one line exactly as git wrote it.
 func (g *gitProgress) flush() {
 	line := strings.TrimSpace(string(g.buf))
 	g.buf = g.buf[:0]
 	if line == "" {
 		return
 	}
-	colon := strings.LastIndex(line, ":")
-	pct := strings.LastIndex(line, "%")
-	if colon < 0 || pct < colon {
-		return
-	}
-	stage := strings.ToLower(strings.TrimSpace(line[:colon]))
-	frac, err := strconv.ParseFloat(strings.TrimSpace(line[colon+1:pct]), 64)
-	if err != nil {
-		return
-	}
-	switch {
-	case strings.Contains(stage, "counting"):
-		stage = "counting objects"
-	case strings.Contains(stage, "compressing"):
-		stage = "compressing objects"
-	case strings.Contains(stage, "receiving"):
-		stage = "receiving objects"
-	case strings.Contains(stage, "resolving"):
-		stage = "resolving deltas"
-	}
-	if r, ok := g.ctx.Value(progressKey{}).(interface {
-		Phase(string)
-		Percent(string, float64)
-	}); ok && r != nil {
-		r.Percent(stage, frac/100)
+	if r, ok := g.ctx.Value(progressKey{}).(TextReporter); ok && r != nil {
+		r.Text(line)
 	}
 }

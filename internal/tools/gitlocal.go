@@ -45,7 +45,6 @@ func (t *toolset) gws(args map[string]any, session, tenant string) (*workspace.W
 
 // gitClone creates a workspace. This is the ONLY way to get a workspace id.
 func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	Progress(ctx).Phase("resolving repository")
 	if t.deps.Workspaces == nil {
 		return extension.ToolResultData{}, &extension.TypedError{
 			Code: easybusInternal, Message: "this deployment has no workspace support",
