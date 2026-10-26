@@ -25,10 +25,91 @@ import (
 // pre-signed URL answers 404 until the job completes, step-level logs answer 404 throughout, and
 // the run zip is 404 as well. Only the job's step STATUS is live.
 
-// JobLog returns one job's log text.
+// JobLogOptions selects a window of a finished job's log.
 //
-// maxLines caps the returned lines; 0 means no cap.
-func (c *Client) JobLog(ctx context.Context, jobID int64, maxLines int) (string, error) {
+// The whole log is fetched either way — GitHub serves it as one archive, there is no ranged read —
+// but what a caller sees is a slice, because a build log is thousands of lines and the useful part
+// is almost never the beginning.
+type JobLogOptions struct {
+	// Tail shows only the last N lines. Ignored when Offset is set.
+	Tail int
+	// Offset, when > 0, shows from that line (1-based) instead of the tail.
+	Offset int
+	// Limit caps the window; 0 means "the rest".
+	Limit int
+	// Grep keeps only lines containing this substring, applied before the window.
+	Grep string
+	// IgnoreCase folds the case of Grep.
+	IgnoreCase bool
+}
+
+// JobLogText returns the selected window plus a note saying what is not being shown.
+func (c *Client) JobLogText(ctx context.Context, jobID int64, o JobLogOptions) (string, int, error) {
+	raw, err := c.jobLogRaw(ctx, jobID)
+	if err != nil {
+		return "", 0, err
+	}
+
+	lines := strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+	total := len(lines)
+
+	if o.Grep != "" {
+		needle := o.Grep
+		if o.IgnoreCase {
+			needle = strings.ToLower(needle)
+		}
+		var kept []string
+		for _, l := range lines {
+			hay := l
+			if o.IgnoreCase {
+				hay = strings.ToLower(hay)
+			}
+			if strings.Contains(hay, needle) {
+				kept = append(kept, l)
+			}
+		}
+		if len(kept) == 0 {
+			return fmt.Sprintf("no line of job %d contains %q (%d lines searched)", jobID, o.Grep, total), total, nil
+		}
+		lines = kept
+	}
+
+	matched := len(lines)
+	start := 0
+	switch {
+	case o.Offset > 0:
+		start = o.Offset - 1
+	case o.Tail > 0 && matched > o.Tail:
+		start = matched - o.Tail
+	}
+	if start >= matched {
+		return fmt.Sprintf("job %d has %d lines; offset %d is past the end", jobID, matched, o.Offset), total, nil
+	}
+	end := matched
+	if o.Limit > 0 && start+o.Limit < end {
+		end = start + o.Limit
+	}
+
+	shown := lines[start:end]
+	var b strings.Builder
+	// Say what is missing BEFORE the text, with counts: "some lines omitted" tells a reader nothing
+	// about whether they are seeing a rounding error or the middle of a stack trace.
+	if o.Grep != "" {
+		fmt.Fprintf(&b, "[%d of %d lines match %q]\n", matched, total, o.Grep)
+	}
+	if start > 0 {
+		fmt.Fprintf(&b, "[%d lines omitted before this window]\n", start)
+	}
+	if end < matched {
+		fmt.Fprintf(&b, "[%d lines omitted after this window — pass offset=%d to continue]\n", matched-end, end+1)
+	}
+	b.WriteString(strings.Join(shown, "\n"))
+	b.WriteString("\n")
+	return b.String(), total, nil
+}
+
+// jobLogRaw downloads and unpacks a finished job's log.
+func (c *Client) jobLogRaw(ctx context.Context, jobID int64) (string, error) {
 	u, resp, err := c.gh.Actions.GetWorkflowJobLogs(ctx, c.Owner, c.Repo, jobID, 10)
 	c.note(resp)
 	if err != nil {
@@ -59,15 +140,5 @@ func (c *Client) JobLog(ctx context.Context, jobID int64, maxLines int) (string,
 	if err != nil {
 		return "", fmt.Errorf("read job log: %w", err)
 	}
-	text := string(body)
-	if maxLines > 0 {
-		lines := strings.Split(text, "\n")
-		if len(lines) > maxLines {
-			// The tail, not the head: a failure is at the END of a log, so truncating from the
-			// top would hide exactly the lines a caller needs.
-			text = strings.Join(lines[len(lines)-maxLines:], "\n")
-			text = fmt.Sprintf("... [showing the last %d of %d lines]\n", maxLines, len(lines)) + text
-		}
-	}
-	return text, nil
+	return string(body), nil
 }

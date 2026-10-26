@@ -190,17 +190,26 @@ func (t *toolset) jobLog(ctx context.Context, args map[string]any, session, tena
 	if jobID <= 0 {
 		return extension.ToolResultData{}, errArg(`"job" is required: the job id from gh-run-jobs`)
 	}
-	limit := argInt(args, "lines")
-	if limit <= 0 {
-		limit = 500
+	// Default window: the TAIL. A failure is at the end, and a caller reading a build log for the
+	// first time wants the outcome, not the compile chatter from twenty minutes ago. Everything
+	// before it is folded with a count, and offset/grep reach back into it.
+	tail := argInt(args, "tail")
+	if tail <= 0 && argInt(args, "offset") <= 0 && argStr(args, "grep") == "" {
+		tail = 200
 	}
-	text, lerr := c.JobLog(progressCtx(ctx), jobID, limit)
+	text, total, lerr := c.JobLogText(progressCtx(ctx), jobID, ghclient.JobLogOptions{
+		Tail:       tail,
+		Offset:     argInt(args, "offset"),
+		Limit:      argInt(args, "limit"),
+		Grep:       argStr(args, "grep"),
+		IgnoreCase: argBool(args, "ignore_case"),
+	})
 	if lerr != nil {
 		return extension.ToolResultData{}, errFailed("%s job %d: %v", repo, jobID, lerr)
 	}
 	return extension.ToolResultData{
 		Content: text,
-		Data:    map[string]any{"job": jobID, "lines": limit},
+		Data:    map[string]any{"job": jobID, "total_lines": total},
 	}, nil
 }
 

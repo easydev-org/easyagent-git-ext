@@ -600,31 +600,73 @@ tools:
 
   - name: gh-job-log
     description: >-
-      One job's log, keeping the LAST lines. Not available while the job runs.
+      The COMPLETE log of a FINISHED job — the runner's real log, with timestamps, ##[group]
+      framing and every line the build produced. Only works after the job finishes; GitHub has no
+      API for a running job (for that, see gh-check-log). Shows the LAST 200 lines by default, with
+      the lines before them folded and counted. Use offset to read earlier parts, or grep to pull
+      out matching lines from anywhere in the log.
     descriptions:
-      zh: "单个 job 的日志，保留**末尾**几行。运行中不可用。"
+      zh: >-
+        **已结束 job 的完整日志**——runner 的真实日志，含时间戳、`##[group]` 框架和构建产生的每一行。
+        **只有 job 结束后才可用**；GitHub 没有查看运行中 job 的接口（要看实时的请用 gh-check-log）。
+        默认只显示**最后 200 行**，之前的部分折叠并标出省略行数。用 offset 读更早的部分，用 grep
+        从全文中提取匹配的行。
     input_schema:
       type: object
       properties:
-        repo: {type: string, descriptions: {zh: 仓库。}}
-        job: {type: integer, descriptions: {zh: 来自 gh-run-jobs 的 job id。}}
-        lines: {type: integer, descriptions: {zh: 最多行数，取末尾（默认 500）。}}
+        repo:
+          type: string
+          descriptions:
+            zh: 仓库。
+        job:
+          type: integer
+          description: Job id from gh-run-jobs.
+          descriptions:
+            zh: 来自 gh-run-jobs 的 job id。
+        tail:
+          type: integer
+          description: Show only the last N lines (default 200).
+          descriptions:
+            zh: 只显示最后 N 行（默认 200）。
+        offset:
+          type: integer
+          description: Start from this line (1-based). Overrides tail.
+          descriptions:
+            zh: 从第几行开始（1 起）。会覆盖 tail。
+        limit:
+          type: integer
+          description: How many lines to show from the start position.
+          descriptions:
+            zh: 从起始位置显示多少行。
+        grep:
+          type: string
+          description: Keep only lines containing this text; applied before the window.
+          descriptions:
+            zh: 只保留包含此文本的行；在取窗口之前过滤。
+        ignore_case:
+          type: boolean
+          description: Case-insensitive grep.
+          descriptions:
+            zh: grep 时忽略大小写。
       required: [repo, job]
 
-  # ── CI：产物与操作 ─────────────────────────────────────────────────────
-  - name: gh-step-log
+  - name: gh-check-log
     description: >-
-      ONE step's log, from the endpoint the GitHub log viewer itself uses: JSON lines with ANSI
-      colour preserved, plus the step's UUID and duration. Better than gh-job-log (a zip of plain
-      text) when you want a single step. Only FINISHED steps have a log — GitHub reports log_url
-      null for a running one and this says so. Without `step` or `step_name` it lists the steps
-      with their UUIDs so you can pick.
+      The LIVE view of a running job — but ONLY if the repository publishes it. This reads a check
+      run's output.text, a field the workflow fills itself; nothing else can fill it, and GitHub
+      exposes no other way to see a running job's output. THREE THINGS TO KNOW: (1) the repository
+      must use the log-stream action, or this returns nothing; (2) the text is the output of THAT
+      ACTION'S WRAPPED COMMAND, not the runner's standard log — no ##[group] framing, no setup
+      notices, no colour; (3) it is TRUNCATED to 65535 characters, keeping the newest lines. For
+      the complete log of a finished job, use gh-job-log.
     descriptions:
       zh: >-
-        单个 step 的日志，取自 GitHub 日志查看器自己用的端点：JSON 行、保留 ANSI 颜色，并给出该 step 的
-        UUID 与耗时。想看单步时比 gh-job-log（纯文本 zip）更合适。**只有已完成的 step 才有日志**——
-        GitHub 对运行中的 step 报告 log_url 为 null，本工具会明确说明。不传 `step` 或 `step_name`
-        时会列出所有 step 及其 UUID 供选择。
+        **运行中 job 的实时视图** —— 但**仅当该仓库主动发布时**才有内容。本工具读取 check run 的
+        output.text，这个字段只能由 workflow 自己写入，GitHub 没有开放其他查看运行中 job 输出的接口。
+        **三点必须知道**：(1) 仓库必须使用 log-stream action，否则本工具返回空；
+        (2) 内容是**那个 action 所包装命令的输出**，不是 runner 的标准日志——没有 `##[group]` 框架、
+        没有环境准备提示、没有颜色；(3) 内容**被截断**到 65535 字符，只保留最新部分。
+        要看已结束 job 的完整日志，请用 gh-job-log。
     input_schema:
       type: object
       properties:
@@ -634,30 +676,15 @@ tools:
             zh: 仓库。
         run:
           type: integer
-          description: Run id from gh-run-list.
+          description: Run id from gh-run-list. Lists every published check run of that run.
           descriptions:
-            zh: 来自 gh-run-list 的运行 id。
+            zh: 来自 gh-run-list 的运行 id。会列出该运行下所有已发布的 check run。
         job:
           type: integer
-          description: Job id from gh-run-jobs. Omit to list every step of the run.
+          description: Job id from gh-run-jobs — reads that job's own check run.
           descriptions:
-            zh: 来自 gh-run-jobs 的 job id。省略时会列出该运行的所有 step。
-        step:
-          type: integer
-          description: Step number, as GitHub numbers it.
-          descriptions:
-            zh: step 序号（GitHub 的编号）。
-        step_name:
-          type: string
-          description: Substring of the step name, case-insensitive.
-          descriptions:
-            zh: step 名称的子串，不区分大小写。
-        lines:
-          type: integer
-          description: Max lines, taken from the END of the log (default 500).
-          descriptions:
-            zh: 最多行数，取日志**末尾**（默认 500）。
-      required: [repo, run]
+            zh: 来自 gh-run-jobs 的 job id——读取该 job 自己的 check run。
+      required: [repo]
 
   - name: gh-artifacts
     description: The artifacts a run uploaded, flagging expired ones.
