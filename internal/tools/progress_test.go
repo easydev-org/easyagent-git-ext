@@ -85,3 +85,42 @@ func TestReporterWithoutSendIsNoOp(t *testing.T) {
 	r.Percent("x", 0.5)
 	r.Note("hello")
 }
+
+// Text is a SEQUENCE, not a value: every line is forwarded, even in a burst.
+//
+// This is the difference between a percentage and program output. A percentage is one number that
+// gets overwritten, so keeping only the latest loses nothing. A line of output that is dropped is
+// gone from the transcript, and a reader watching a clone scroll expects to see it scroll. The
+// volume is bounded downstream, where a finished result is trimmed to its first and last 250
+// lines — not here, where trimming would make the LIVE view lossy.
+func TestTextForwardsEveryLineWithoutSampling(t *testing.T) {
+	r, seen := collect()
+	want := []string{
+		"Enumerating objects: 776, done.",
+		"Counting objects: 100% (776/776), done.",
+		"Compressing objects: 100% (512/512), done.",
+		"Receiving objects: 100% (776/776), done.",
+	}
+	for _, l := range want {
+		r.Text(l)
+	}
+	if len(*seen) != len(want) {
+		t.Fatalf("forwarded %d of %d lines — output must not be sampled", len(*seen), len(want))
+	}
+	for i, l := range want {
+		if got := (*seen)[i].GetText(); got != l {
+			t.Errorf("line %d = %q, want %q (verbatim)", i, got, l)
+		}
+	}
+}
+
+// Alignment inside a line survives: git pads its counters, and a re-spaced line is not the line
+// git printed.
+func TestTextPreservesInnerSpacing(t *testing.T) {
+	r, seen := collect()
+	const line = "Receiving objects:  42% (21/50)"
+	r.Text(line)
+	if got := (*seen)[0].GetText(); got != line {
+		t.Errorf("line = %q, want %q", got, line)
+	}
+}

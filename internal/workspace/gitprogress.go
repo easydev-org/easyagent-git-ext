@@ -38,7 +38,10 @@ func (g *gitProgress) Write(p []byte) (int, error) {
 
 // flush emits one line exactly as git wrote it.
 func (g *gitProgress) flush() {
-	line := strings.TrimSpace(string(g.buf))
+	// Only the trailing LINEFEED is stripped. TrimSpace would also eat alignment — git pads its
+	// counters ("Receiving objects:  42% (21/50)" has two spaces) and a forwarded line that is
+	// re-spaced is no longer the line git printed.
+	line := strings.TrimRight(string(g.buf), "\r\n")
 	g.buf = g.buf[:0]
 	if line == "" {
 		return

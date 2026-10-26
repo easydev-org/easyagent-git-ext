@@ -124,23 +124,21 @@ func (r *Reporter) Percent(phase string, fraction float64) {
 	r.send(&easybus.ToolProgress{Phase: ptr(phase), Progress: &f})
 }
 
-// Text forwards a line of output from another program, unchanged.
+// Text forwards a line of output from another program, unchanged and UNSAMPLED.
 //
-// Rate-limited like Percent, because git writes its progress far faster than a session can read
-// it: a fifty-megabyte clone emits thousands of carriage-return updates and forwarding each one
-// would flood the bus. What is sent is git's own line, not a paraphrase — no field is rewritten.
+// WHY NO RATE LIMIT HERE, unlike Percent: dropping lines is not the same as refreshing a value.
+// A percentage is a single number that gets overwritten, so sending only the latest loses nothing.
+// Program output is a SEQUENCE, and discarding entries from it loses information that never comes
+// back — a reader watching a clone scroll past expects to see it scroll, not to be shown every
+// fourth line.
+//
+// The volume is handled where it belongs: the agent batches live frames on the wire, and trims a
+// FINISHED result to its first and last 250 lines. Repeating that policy here would have made the
+// live view lossy for no gain — the mechanism that bounds the cost is already downstream.
 func (r *Reporter) Text(line string) {
 	if r == nil || r.send == nil || line == "" {
 		return
 	}
-	now := time.Now()
-	r.mu.Lock()
-	if now.Sub(r.lastAt) < minProgressInterval {
-		r.mu.Unlock()
-		return
-	}
-	r.lastAt = now
-	r.mu.Unlock()
 	r.send(&easybus.ToolProgress{Text: ptr(line)})
 }
 
