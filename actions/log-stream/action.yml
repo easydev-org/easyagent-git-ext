@@ -1,0 +1,52 @@
+name: 'Stream build output to a check run'
+description: >-
+  Publish a command's output into a GitHub check run while it runs, so a reader with a token can
+  follow the build live. The Actions log is not readable until the step finishes; a check run's
+  output.text is.
+author: easydev-org
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  command:
+    description: >-
+      The command to run and stream. Passed to the shell as-is.
+    required: true
+  name:
+    description: >-
+      Name of the check run. Defaults to the job name, so one step per job needs no configuration.
+    required: false
+    default: ''
+  interval:
+    description: >-
+      Seconds between updates. Every line would be one API call per line — far too many; a build
+      that prints a thousand lines a second would be a thousand requests a second.
+    required: false
+    default: '5'
+  max_bytes:
+    description: >-
+      Character cap for the published text. GitHub refuses anything above 65535, so this is capped
+      there; the newest lines are kept and the oldest are dropped with a note.
+    required: false
+    default: '65535'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: stream output
+      shell: bash
+      env:
+        # GITHUB_TOKEN is provided by the workflow; the `checks: write` permission must be granted
+        # by the job, which is the only thing the caller has to remember.
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_NAME: ${{ inputs.name }}
+        INPUT_INTERVAL: ${{ inputs.interval }}
+        INPUT_MAX_BYTES: ${{ inputs.max_bytes }}
+      run: |
+        set -euo pipefail
+        # The script ships next to this action.yml, so no checkout of another repository is needed.
+        script="$(dirname "$GITHUB_ACTION_PATH")/log_stream.py"
+        args=(--interval "$INPUT_INTERVAL" --max-bytes "$INPUT_MAX_BYTES")
+        if [ -n "${INPUT_NAME}" ]; then args+=(--name "$INPUT_NAME"); fi
+        python3 "$script" "${args[@]}" -- bash -c "$INPUT_COMMAND"
