@@ -151,14 +151,11 @@ func (t *toolset) stepIndex(ctx context.Context, c *ghclient.Client, repo string
 		if j.Conclusion != "" {
 			state = j.Conclusion
 		}
-		fmt.Fprintf(&b, "%s  [%s]  job=%d
-", j.Name, state, j.ID)
+		fmt.Fprintf(&b, "%s  [%s]  job=%d\n", j.Name, state, j.ID)
 		steps, serr := c.StepDetails(ctx, runID, j.ID)
 		if serr != nil {
 			// The step endpoint is undocumented; say it failed rather than showing an empty list.
-			fmt.Fprintf(&b, "  (step list unavailable: %v)
-
-", serr)
+			fmt.Fprintf(&b, "  (step list unavailable: %v)\n\n", serr)
 			continue
 		}
 		for _, s := range steps {
@@ -171,15 +168,12 @@ func (t *toolset) stepIndex(ctx context.Context, c *ghclient.Client, repo string
 				// A dot means the log is readable NOW; a blank means GitHub has not published it.
 				mark = "."
 			}
-			fmt.Fprintf(&b, "  %s #%-3d %-44s %s
-", mark, s.Number, truncate(s.Name, 44), st)
+			fmt.Fprintf(&b, "  %s #%-3d %-44s %s\n", mark, s.Number, truncate(s.Name, 44), st)
 			rows = append(rows, row{Job: j.ID, Step: s.Number})
 		}
-		b.WriteString("
-")
+		b.WriteString("\n")
 	}
-	b.WriteString("a dot marks a step whose log is available. read one with:
-")
+	b.WriteString("a dot marks a step whose log is available. read one with:\n")
 	if len(rows) > 0 {
 		fmt.Fprintf(&b, "  gh-step-log run=%d job=%d step=%d", runID, rows[0].Job, rows[0].Step)
 	}
