@@ -13,6 +13,13 @@ inputs:
     description: >-
       The command to run and stream. Passed to the shell as-is.
     required: true
+  token:
+    description: >-
+      Token used to create and update the check run. Pass `${{ github.token }}`: a composite action
+      does NOT inherit the caller's environment, so a secret cannot be picked up implicitly — which
+      is the mistake that made the first version report "GITHUB_TOKEN must be set" inside a job
+      that had one.
+    required: true
   name:
     description: >-
       Name of the check run. Defaults to the job name, so one step per job needs no configuration.
@@ -37,8 +44,8 @@ runs:
     - name: stream output
       shell: bash
       env:
-        # GITHUB_TOKEN is provided by the workflow; the `checks: write` permission must be granted
-        # by the job, which is the only thing the caller has to remember.
+        # Passed explicitly: a composite action gets the caller's env only for what it declares.
+        GITHUB_TOKEN: ${{ inputs.token }}
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_NAME: ${{ inputs.name }}
         INPUT_INTERVAL: ${{ inputs.interval }}

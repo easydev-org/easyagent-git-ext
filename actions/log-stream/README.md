@@ -21,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: easydev-org/easyagent-github-ext/actions/log-stream@main
         with:
+          token: ${{ github.token }}     # composite actions do not inherit env
           command: make test
 ```
 
