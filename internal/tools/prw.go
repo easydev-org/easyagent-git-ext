@@ -18,6 +18,7 @@ import (
 //
 // So the division is: git-ws-commit (local, repeatable) → gh-pr-create (publish once).
 func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("checking the workspace")
 	repo, err := required(args, "repo")
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -65,6 +66,7 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 	// pushing THAT would be a direct push to main — so a fresh pr/* branch is created instead.
 	branch := w.CurrentBranch()
 	if branch == "" || branch == "main" || branch == "master" {
+		Progress(ctx).Phase("creating a branch")
 		fresh, berr := newBranchName()
 		if berr != nil {
 			return extension.ToolResultData{}, errFailed("branch name: %v", berr)
@@ -75,6 +77,7 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 		branch = fresh
 	}
 
+	Progress(ctx).Phase("pushing")
 	pushed, perr := w.Push(ctx, t.token(tenant))
 	if perr != nil {
 		return extension.ToolResultData{}, errFailed("%v", perr)
@@ -92,6 +95,7 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 		}
 		base = info.DefaultBranch
 	}
+	Progress(ctx).Phase("opening the pull request")
 	pr, err := c.CreatePR(ctx, base, branch, title, argStr(args, "body"))
 	if err != nil {
 		// The branch exists; only the PR does not. Naming the branch lets the caller retry just

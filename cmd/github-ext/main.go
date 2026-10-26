@@ -80,6 +80,15 @@ func main() {
 			}
 			return ext.GetSessionVariable(context.Background(), tenant, "agent", session, "locale", "")
 		},
+		// In-flight progress. The extension needs the callID to address an update, and only the
+		// Execute adapter has it — so the adapter builds a reporter per call and puts it on the
+		// context, and handlers reach it with tools.Progress(ctx).
+		ReportProgress: func(ctx context.Context, tenant, callID string, p *easybus.ToolProgress) error {
+			if ext == nil {
+				return nil
+			}
+			return ext.ReportProgress(ctx, tenant, callID, p)
+		},
 	})
 
 	specs := make(map[string]extension.ToolSpec, len(handlers))
@@ -92,7 +101,20 @@ func main() {
 			// requirement would simply never be gated.
 			Requires: requires[name],
 			Execute: func(ctx context.Context, args map[string]any, callID, session, tenant string) (extension.ToolResultData, error) {
-				return h(ctx, args, session, tenant)
+				// A reporter per call: progress belongs to THIS call, and sharing one across
+				// concurrent calls would interleave two tools' phases.
+				// ext is nil while these specs are being built (it is assigned after
+				// extension.New), so the reporter asks for it AT CALL TIME.
+				rep := tools.NewReporter(func(p *easybus.ToolProgress) {
+					// A failed progress publish must not fail the tool: the work is the point,
+					// the narration is a courtesy.
+					if e := ext; e != nil {
+						if err := e.ReportProgress(ctx, tenant, callID, p); err != nil {
+							log.Debug("progress publish failed", "tool", name, "err", err)
+						}
+					}
+				})
+				return h(tools.WithReporter(ctx, rep), args, session, tenant)
 			},
 		}
 	}
@@ -143,4 +165,15 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// depReporter returns the progress publisher, or nil when the extension is not ready.
+//
+// Read through a function so the adapter picks up the extension AFTER it is assigned: ext is nil
+// while the specs are being built.
+func depReporter(ext *extension.Extension) func(ctx context.Context, tenant, callID string, p *easybus.ToolProgress) error {
+	if ext == nil {
+		return nil
+	}
+	return ext.ReportProgress
 }

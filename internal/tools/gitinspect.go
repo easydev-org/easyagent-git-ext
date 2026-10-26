@@ -14,11 +14,12 @@ import (
 
 // gitDiff shows what changed, as a unified diff.
 func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("staging for comparison")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	d, derr := w.Diff(workspace.DiffOptions{
+	d, derr := w.DiffGoGitCtx(progressCtx(ctx), workspace.DiffOptions{
 		Path:   argStr(args, "path"),
 		Staged: argBool(args, "staged"),
 	})
@@ -49,6 +50,7 @@ func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, ten
 
 // gitBlame reports who last changed each line of a file.
 func (t *toolset) gitBlame(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("walking history for each line")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -77,6 +79,7 @@ func (t *toolset) gitBlame(ctx context.Context, args map[string]any, session, te
 
 // gitCommit records the workspace's changes locally. It does NOT push.
 func (t *toolset) gitCommit(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("staging changes")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -115,6 +118,7 @@ func (t *toolset) gitCommit(ctx context.Context, args map[string]any, session, t
 
 // gitPull fast-forwards the workspace to its remote.
 func (t *toolset) gitPull(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("fetching from the remote")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -140,6 +144,7 @@ func (t *toolset) gitPull(ctx context.Context, args map[string]any, session, ten
 
 // gitReset discards working-tree changes.
 func (t *toolset) gitReset(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("restoring files")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err

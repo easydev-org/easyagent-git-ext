@@ -239,6 +239,7 @@ func (c *Client) RunLogs(ctx context.Context, runID int64, maxLinesPerJob int) (
 		return nil, fmt.Errorf("read logs: %w", err)
 	}
 
+	phase(ctx, "unpacking the log archive")
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
 		return nil, fmt.Errorf("logs are not a zip archive: %w", err)

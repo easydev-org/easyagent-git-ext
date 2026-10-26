@@ -54,6 +54,7 @@ func (c *Client) JobLog(ctx context.Context, jobID int64, maxLines int) (string,
 	if resp2.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("download job log: HTTP %d", resp2.StatusCode)
 	}
+	phase(ctx, "reading the job log")
 	body, err := io.ReadAll(io.LimitReader(resp2.Body, 32<<20))
 	if err != nil {
 		return "", fmt.Errorf("read job log: %w", err)

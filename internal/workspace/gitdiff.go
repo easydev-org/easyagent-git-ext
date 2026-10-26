@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path"
 	"sort"
@@ -31,7 +32,16 @@ import (
 // staging, which this toolset does not offer.
 
 // DiffGoGit renders the workspace's changes as a unified diff, computed by go-git.
+// DiffGoGitCtx is DiffGoGit with a context, so the tree comparison can be narrated.
+func (w *Workspace) DiffGoGitCtx(ctx context.Context, o DiffOptions) (string, error) {
+	return w.diffWithPhase(o, func(name string) { workspacePhase(ctx, name) })
+}
+
 func (w *Workspace) DiffGoGit(o DiffOptions) (string, error) {
+	return w.diffWithPhase(o, func(string) {})
+}
+
+func (w *Workspace) diffWithPhase(o DiffOptions, say func(string)) (string, error) {
 	r, err := w.open()
 	if err != nil {
 		return "", err
@@ -73,6 +83,7 @@ func (w *Workspace) DiffGoGit(o DiffOptions) (string, error) {
 		oldTree = &object.Tree{}
 	}
 
+	say("comparing trees")
 	changes, err := object.DiffTree(oldTree, newTree)
 	if err != nil {
 		return "", fmt.Errorf("diff trees: %w", err)

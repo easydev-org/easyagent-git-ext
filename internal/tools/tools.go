@@ -40,6 +40,9 @@ type Deps struct {
 	// a zip of arbitrary size, so it is stored and referenced by name rather than returned in the
 	// tool result. Nil means the deployment has no object storage, and that tool reports so.
 	PutObject func(ctx context.Context, tenant, name string, data []byte) error
+	// ReportProgress publishes one in-flight update for a call. Nil disables progress: handlers
+	// keep working, they just say nothing until the result.
+	ReportProgress func(ctx context.Context, tenant, callID string, p *easybus.ToolProgress) error
 }
 
 // Handler is one tool implementation.

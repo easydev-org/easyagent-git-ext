@@ -40,6 +40,7 @@ func (t *toolset) issueRef(ctx context.Context, c *ghclient.Client, number int) 
 
 // issueShow shows an issue OR a pull request, saying which.
 func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading the issue")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -78,6 +79,7 @@ func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, t
 	if strings.TrimSpace(is.Body) != "" {
 		fmt.Fprintf(&b, "\n---\n%s\n", strings.TrimSpace(is.Body))
 	}
+	Progress(ctx).Phase("reading its comments")
 	comments, _ := c.IssueComments(ctx, n)
 	if len(comments) > 0 {
 		fmt.Fprintf(&b, "\n--- %d comment(s); see gh-issue-comments for the full thread ---\n", len(comments))
@@ -90,6 +92,7 @@ func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, t
 
 // issueList lists issues and/or pull requests.
 func (t *toolset) issueList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing issues and pull requests")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -160,6 +163,7 @@ func (t *toolset) issueList(ctx context.Context, args map[string]any, session, t
 // has. On an issue that combination is REFUSED rather than quietly downgraded to a conversation
 // comment: the caller asked for something specific and got something else.
 func (t *toolset) issueComment(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("posting the comment")
 	repo, err := required(args, "repo")
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -209,6 +213,7 @@ func (t *toolset) issueComment(ctx context.Context, args map[string]any, session
 
 // issueComments shows everything said on an issue or pull request.
 func (t *toolset) issueComments(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading the conversation")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -222,6 +227,7 @@ func (t *toolset) issueComments(ctx context.Context, args map[string]any, sessio
 		return extension.ToolResultData{}, errFailed("%s#%d: %v", repo, n, cerr)
 	}
 	// Line comments exist only on pull requests; on an issue this simply returns nothing.
+	Progress(ctx).Phase("reading line comments")
 	inline, _ := c.PRComments(ctx, n)
 
 	if len(convo) == 0 && len(inline) == 0 {
@@ -261,6 +267,7 @@ func (t *toolset) issueComments(ctx context.Context, args map[string]any, sessio
 // The result SAYS which, and for a pull request adds that closing does not delete the branch: the
 // two actions share an endpoint but not a consequence, and a caller should not have to guess.
 func (t *toolset) issueClose(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("closing")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err

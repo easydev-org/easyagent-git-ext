@@ -12,6 +12,7 @@ import (
 
 // prFiles lists the files a pull request touches, with per-file counts.
 func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing changed files")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -53,6 +54,7 @@ func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, ten
 
 // prDiff shows the whole change as one unified diff.
 func (t *toolset) prDiff(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("fetching the diff")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err

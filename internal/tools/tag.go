@@ -18,6 +18,7 @@ import (
 
 // tagCreate creates an annotated tag.
 func (t *toolset) tagCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("resolving the target commit")
 	repo, err := required(args, "repo")
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -58,6 +59,7 @@ func (t *toolset) tagCreate(ctx context.Context, args map[string]any, session, t
 }
 
 func (t *toolset) tagList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing tags")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -81,6 +83,7 @@ func (t *toolset) tagList(ctx context.Context, args map[string]any, session, ten
 }
 
 func (t *toolset) tagDelete(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("deleting the release")
 	repo, err := required(args, "repo")
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -129,6 +132,7 @@ func (t *toolset) tagDelete(ctx context.Context, args map[string]any, session, t
 // into 1+N, and anonymous access allows 60 requests an hour — so listing a repository with more
 // than 60 tags would fail outright, which is worse than not showing messages.
 func (t *toolset) tagShow(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading the tag annotation")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err

@@ -58,6 +58,7 @@ func (t *toolset) token(tenant string) string {
 }
 
 func (t *toolset) info(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading repository metadata")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err

@@ -22,6 +22,7 @@ func ghListRunsOptions(args map[string]any) ghclient.ListRunsOptions {
 }
 
 func (t *toolset) workflowList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing workflows")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -45,6 +46,7 @@ func (t *toolset) workflowList(ctx context.Context, args map[string]any, session
 }
 
 func (t *toolset) runList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing runs")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -76,6 +78,7 @@ func (t *toolset) runList(ctx context.Context, args map[string]any, session, ten
 // The per-step status is available while the run is still going, which is the closest thing
 // GitHub offers to watching CI: the LOG is only published once a job finishes.
 func (t *toolset) runJobs(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading job status")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -124,6 +127,7 @@ func (t *toolset) runJobs(ctx context.Context, args map[string]any, session, ten
 
 // runLog returns a run's logs, per job.
 func (t *toolset) runLog(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("downloading the log archive")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -138,7 +142,7 @@ func (t *toolset) runLog(ctx context.Context, args map[string]any, session, tena
 	if limit <= 0 {
 		limit = 500
 	}
-	logs, err := c.RunLogs(ctx, runID, limit)
+	logs, err := c.RunLogs(progressCtx(ctx), runID, limit)
 	if err != nil {
 		return extension.ToolResultData{}, errFailed("%s run %d: %v", repo, runID, err)
 	}
@@ -170,6 +174,7 @@ func (t *toolset) runLog(ctx context.Context, args map[string]any, session, tena
 // text directly. Its tail is what matters — a failure is at the END of a log — so the line cap
 // keeps the LAST lines rather than the first.
 func (t *toolset) jobLog(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("downloading the job log")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -182,7 +187,7 @@ func (t *toolset) jobLog(ctx context.Context, args map[string]any, session, tena
 	if limit <= 0 {
 		limit = 500
 	}
-	text, lerr := c.JobLog(ctx, jobID, limit)
+	text, lerr := c.JobLog(progressCtx(ctx), jobID, limit)
 	if lerr != nil {
 		return extension.ToolResultData{}, errFailed("%s job %d: %v", repo, jobID, lerr)
 	}

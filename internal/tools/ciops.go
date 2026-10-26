@@ -14,6 +14,7 @@ import (
 
 // artifactList lists a run's artifacts.
 func (t *toolset) artifactList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing artifacts")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -56,6 +57,7 @@ func (t *toolset) artifactList(ctx context.Context, args map[string]any, session
 // conversation. Storing it returns a handle the session can hand to another tool — the same idea
 // as sandbox-file-upload, and the same storage.
 func (t *toolset) artifactDownload(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("downloading the artifact")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -83,6 +85,7 @@ func (t *toolset) artifactDownload(ctx context.Context, args map[string]any, ses
 	// name; without it one run's build-output would overwrite another's.
 	name := fmt.Sprintf("github/artifacts/%s/%d-%s.zip",
 		strings.ReplaceAll(repo, "/", "__"), id, sanitiseName(argStr(args, "name")))
+	Progress(ctx).Phase("storing the artifact")
 	if perr := t.deps.PutObject(ctx, tenant, name, data); perr != nil {
 		return extension.ToolResultData{}, errFailed("store artifact: %v", perr)
 	}
@@ -95,6 +98,7 @@ func (t *toolset) artifactDownload(ctx context.Context, args map[string]any, ses
 
 // runRerun reruns a run, or only its failed jobs.
 func (t *toolset) runRerun(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("requesting the rerun")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -127,6 +131,7 @@ func (t *toolset) runRerun(ctx context.Context, args map[string]any, session, te
 
 // runCancel cancels a run.
 func (t *toolset) runCancel(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("requesting cancellation")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -148,6 +153,7 @@ func (t *toolset) runCancel(ctx context.Context, args map[string]any, session, t
 
 // runDispatch triggers a workflow_dispatch event.
 func (t *toolset) runDispatch(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("resolving the ref")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -170,6 +176,7 @@ func (t *toolset) runDispatch(ctx context.Context, args map[string]any, session,
 	if raw, ok := args["inputs"].(map[string]any); ok {
 		inputs = raw
 	}
+	Progress(ctx).Phase("dispatching")
 	runID, url, derr := c.DispatchRun(ctx, ghclient.DispatchOptions{
 		Workflow: workflow, Ref: ref, Inputs: inputs,
 	})

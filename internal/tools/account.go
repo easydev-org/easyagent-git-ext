@@ -25,6 +25,7 @@ func (t *toolset) accountClient(tenant string) (*ghclient.Client, error) {
 }
 
 func (t *toolset) whoami(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("identifying the token")
 	c, err := t.accountClient(tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -65,6 +66,7 @@ func (t *toolset) whoami(ctx context.Context, args map[string]any, session, tena
 }
 
 func (t *toolset) orgs(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing organizations")
 	c, err := t.accountClient(tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -93,6 +95,7 @@ func (t *toolset) orgs(ctx context.Context, args map[string]any, session, tenant
 // repos lists repositories: one organization's when `org` is given, otherwise everything the
 // caller can see.
 func (t *toolset) repos(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing repositories")
 	c, err := t.accountClient(tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -125,6 +128,7 @@ func (t *toolset) repos(ctx context.Context, args map[string]any, session, tenan
 }
 
 func (t *toolset) releases(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing releases")
 	c, repo, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -167,6 +171,7 @@ func (t *toolset) releases(ctx context.Context, args map[string]any, session, te
 }
 
 func (t *toolset) packages(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing packages")
 	c, err := t.accountClient(tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err

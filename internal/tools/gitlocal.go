@@ -45,6 +45,7 @@ func (t *toolset) gws(args map[string]any, session, tenant string) (*workspace.W
 
 // gitClone creates a workspace. This is the ONLY way to get a workspace id.
 func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("resolving repository")
 	if t.deps.Workspaces == nil {
 		return extension.ToolResultData{}, &extension.TypedError{
 			Code: easybusInternal, Message: "this deployment has no workspace support",
@@ -83,6 +84,7 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 
 // gitWorkspace lists or closes workspaces.
 func (t *toolset) gitWorkspace(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("listing workspaces")
 	if t.deps.Workspaces == nil {
 		return extension.ToolResultData{}, &extension.TypedError{
 			Code: easybusInternal, Message: "this deployment has no workspace support",
@@ -111,6 +113,7 @@ func (t *toolset) gitWorkspace(ctx context.Context, args map[string]any, session
 
 // gitStatus reports what changed in the workspace.
 func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading the working tree")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -139,6 +142,7 @@ func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, t
 
 // gitPatch edits files in the workspace — the ONLY editing tool.
 func (t *toolset) gitPatch(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading current files")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -166,6 +170,7 @@ func (t *toolset) gitPatch(ctx context.Context, args map[string]any, session, te
 
 // gitRead reads a file from the workspace, with line numbers.
 func (t *toolset) gitRead(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading the file")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -186,6 +191,7 @@ func (t *toolset) gitRead(ctx context.Context, args map[string]any, session, ten
 
 // gitList lists files in the workspace.
 func (t *toolset) gitList(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("walking the working tree")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -211,6 +217,7 @@ func (t *toolset) gitList(ctx context.Context, args map[string]any, session, ten
 
 // gitLog shows the workspace's real commit history.
 func (t *toolset) gitLog(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
+	Progress(ctx).Phase("reading history")
 	w, err := t.gws(args, session, tenant)
 	if err != nil {
 		return extension.ToolResultData{}, err
