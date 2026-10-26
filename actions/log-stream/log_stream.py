@@ -25,6 +25,7 @@ WHY IT THROTTLES: one PATCH per line would be tens of thousands of requests for 
 Updates go out at most every --interval seconds, and only when the buffer actually changed.
 """
 import argparse
+import datetime
 import json
 import os
 import signal
@@ -100,18 +101,26 @@ class CheckRun:
         return body
 
     def feed(self, line):
-        """Record one line of output, stamped with the time it arrived.
+        """Record one line of output, stamped exactly as the Actions log stamps it.
 
-        The timestamp is what makes the stream readable at all: without it a reader cannot tell a
-        build that is working from one that stalled five minutes ago, and the whole point of
-        streaming is to answer that question while it is still being asked.
+        FORMAT: 2026-10-26T13:35:32.7366402Z — the runner's own, to the digit.
 
-        HH:MM:SS and not the Actions log's full ISO-with-microseconds: this text is a progress
-        view read at a glance, and the precision that matters is "which second", not "which
-        nanosecond". The exact timestamps remain in the Actions log, which is where a post-mortem
-        should look.
+        WHY MATCH IT: a compact HH:MM:SS would fit maybe a fifth more lines into the 65535-character
+        budget. That is the whole argument for the short one, and it does not outweigh this one:
+        the same line of build output carries the SAME timestamp in both places, so the live view
+        and the archived log can be read against each other, grepped together, and sorted as one
+        sequence. A format that looks slightly different in each place makes a reader stop and
+        translate, which is the opposite of what a progress view is for.
+
+        Seven fractional digits, because that is what the runner emits. Python's %f stops at
+        microseconds, so the nanoseconds come from time.time_ns() and are formatted by hand —
+        dropping to six digits would reintroduce exactly the mismatch this is meant to avoid.
         """
-        stamp = time.strftime("%H:%M:%S", time.gmtime())
+        ns = time.time_ns()
+        secs, nanos = divmod(ns, 1_000_000_000)
+        stamp = datetime.datetime.fromtimestamp(
+            secs, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        stamp = "%s.%07dZ" % (stamp, nanos // 100)
         with self.lock:
             self.lines.append("%s %s" % (stamp, line.rstrip("\n")))
             self.dirty = True

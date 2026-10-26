@@ -27,18 +27,25 @@ jobs:
 
 The step's own log is unchanged — output goes to both places.
 
-Each line carries the UTC time it arrived:
+Each line carries a timestamp in **exactly the format the Actions log uses**:
 
 ```
-13:23:38 configure: starting
-13:23:43 compile unit 1/12
-13:24:33 test: 42 passed
+2026-10-26T13:35:32.7366402Z configure: starting
+2026-10-26T13:35:37.7404738Z compile unit 1/12
+2026-10-26T13:36:32.7721540Z test: 42 passed
 ```
 
-That stamp is the point of the exercise: without it a reader cannot tell a build that is working
-from one that stalled. It is deliberately coarse — HH:MM:SS, not the Actions log's
-ISO-with-microseconds — because this is a progress view, and exact timestamps live in the Actions
-log where a post-mortem belongs.
+That is the same line, with the same timestamp, in both places:
+
+```
+Actions log : 2026-10-26T13:35:37.7404738Z compile unit 2/12 at 13:35:37
+output.text : 2026-10-26T13:35:37.7404738Z compile unit 2/12 at 13:35:37
+```
+
+The two views can therefore be read against each other, grepped together, or sorted as one
+sequence. A shorter format (HH:MM:SS) would fit about a fifth more lines into the character budget,
+and that is the only argument for it — not enough to justify making a reader translate between two
+dialects of the same log.
 
 ## Read it from outside
 
