@@ -15,12 +15,10 @@ inputs:
     required: true
   token:
     description: >-
-      Token used to create and update the check run. The caller passes github.token.
-      TWO reasons it cannot be implicit, both found the hard way:
-        - a composite action does not inherit the caller's environment, and
-        - the `github` context does not exist inside action.yml at all, so writing
-          ${{ github.token }} HERE is a template error the runner refuses to load.
-      Only the workflow can supply it.
+      Token used to create and update the check run. The caller passes its workflow token.
+      It cannot be implicit: a composite action does not inherit the caller's environment, and
+      this file has no access to the github context at all — naming that context in an expression
+      here is a template error the runner refuses to load, even inside a description.
     required: true
   name:
     description: >-
