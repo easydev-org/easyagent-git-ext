@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/easydev-org/easybus-sdk/extension"
+
+	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
 )
 
 // gh-check-log: the LIVE view, and the three things a caller must know before trusting it.
