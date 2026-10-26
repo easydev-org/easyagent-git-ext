@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/easydev-org/easybus-sdk/extension"
+
+	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
 )
 
 // gh-step-log: one step's log, from the endpoint the web UI uses.
@@ -25,8 +27,14 @@ func (t *toolset) stepLog(ctx context.Context, args map[string]any, session, ten
 	}
 	runID := int64(argInt(args, "run"))
 	jobID := int64(argInt(args, "job"))
-	if runID <= 0 || jobID <= 0 {
-		return extension.ToolResultData{}, errArg(`"run" and "job" are required (from gh-run-jobs)`)
+	if runID <= 0 {
+		return extension.ToolResultData{}, errArg(`"run" is required (from gh-run-list)`)
+	}
+	// Without a job, list every step of the run. Requiring the id made this tool unreachable in
+	// practice: the job id exists in the API but no tool displayed it, so a caller had no way to
+	// learn the one argument this needs.
+	if jobID <= 0 {
+		return t.stepIndex(ctx, c, repo, runID)
 	}
 	limit := argInt(args, "lines")
 	if limit <= 0 {
@@ -116,6 +124,68 @@ func (t *toolset) stepLog(ctx context.Context, args map[string]any, session, ten
 			"run": runID, "job": jobID, "step": s.Number, "uuid": s.UUID,
 			"lines": len(lines), "conclusion": s.Conclusion,
 		},
+	}, nil
+}
+
+
+// stepIndex lists every step of every job in a run, with its UUID and whether a log exists.
+//
+// This is the discovery step: gh-step-log needs a job id and a step selector, and a caller
+// reading a run for the first time has neither.
+func (t *toolset) stepIndex(ctx context.Context, c *ghclient.Client, repo string, runID int64) (extension.ToolResultData, error) {
+	jobs, jerr := c.RunJobs(ctx, runID)
+	if jerr != nil {
+		return extension.ToolResultData{}, errFailed("%s run %d: %v", repo, runID, jerr)
+	}
+	if len(jobs) == 0 {
+		return extension.ToolResultData{Content: fmt.Sprintf("run %d has no jobs yet", runID)}, nil
+	}
+	var b strings.Builder
+	type row struct {
+		Job  int64
+		Step int
+	}
+	var rows []row
+	for _, j := range jobs {
+		state := j.Status
+		if j.Conclusion != "" {
+			state = j.Conclusion
+		}
+		fmt.Fprintf(&b, "%s  [%s]  job=%d
+", j.Name, state, j.ID)
+		steps, serr := c.StepDetails(ctx, runID, j.ID)
+		if serr != nil {
+			// The step endpoint is undocumented; say it failed rather than showing an empty list.
+			fmt.Fprintf(&b, "  (step list unavailable: %v)
+
+", serr)
+			continue
+		}
+		for _, s := range steps {
+			st := s.Status
+			if s.Conclusion != "" {
+				st = s.Conclusion
+			}
+			mark := " "
+			if s.Finished() {
+				// A dot means the log is readable NOW; a blank means GitHub has not published it.
+				mark = "."
+			}
+			fmt.Fprintf(&b, "  %s #%-3d %-44s %s
+", mark, s.Number, truncate(s.Name, 44), st)
+			rows = append(rows, row{Job: j.ID, Step: s.Number})
+		}
+		b.WriteString("
+")
+	}
+	b.WriteString("a dot marks a step whose log is available. read one with:
+")
+	if len(rows) > 0 {
+		fmt.Fprintf(&b, "  gh-step-log run=%d job=%d step=%d", runID, rows[0].Job, rows[0].Step)
+	}
+	return extension.ToolResultData{
+		Content: b.String(),
+		Data:    map[string]any{"run": runID, "jobs": len(jobs)},
 	}, nil
 }
 

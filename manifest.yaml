@@ -639,9 +639,9 @@ tools:
             zh: 来自 gh-run-list 的运行 id。
         job:
           type: integer
-          description: Job id from gh-run-jobs.
+          description: Job id from gh-run-jobs. Omit to list every step of the run.
           descriptions:
-            zh: 来自 gh-run-jobs 的 job id。
+            zh: 来自 gh-run-jobs 的 job id。省略时会列出该运行的所有 step。
         step:
           type: integer
           description: Step number, as GitHub numbers it.
@@ -657,7 +657,7 @@ tools:
           description: Max lines, taken from the END of the log (default 500).
           descriptions:
             zh: 最多行数，取日志**末尾**（默认 500）。
-      required: [repo, run, job]
+      required: [repo, run]
 
   - name: gh-artifacts
     description: The artifacts a run uploaded, flagging expired ones.

@@ -98,7 +98,10 @@ func (t *toolset) runJobs(ctx context.Context, args map[string]any, session, ten
 		if j.Conclusion != "" {
 			state = j.Conclusion
 		}
-		fmt.Fprintf(&b, "%s  [%s]\n", j.Name, state)
+		// The job id is printed because gh-step-log needs it and there is no other way to learn
+		// it: the REST API has it but nothing displayed it, so the tool that consumes it was
+		// unreachable. An id in a table is worth more than a prettier table.
+		fmt.Fprintf(&b, "%s  [%s]  job=%d\n", j.Name, state, j.ID)
 		for _, s := range j.Steps {
 			ss := s.Status
 			if s.Conclusion != "" {
@@ -220,9 +223,12 @@ func stepElapsed(s ghclient.Step) string {
 		}
 	}
 	d := end.Sub(start)
-	if d < 0 {
-		// The step started before midnight and finished after it, and only the clock time was
-		// kept. Reporting nothing is honest; reporting a negative duration is not.
+	// GitHub reports an unfinished step's timestamps as a sentinel near the int64 millisecond
+	// limit — a step "running" for 153722867 minutes (some 292 years) is not running, it is
+	// unsettled. Anything beyond a plausible upper bound is reported as unknown rather than as an
+	// absurd number a reader would have to decode.
+	const absurd = 24 * time.Hour
+	if d < 0 || d > absurd {
 		return ""
 	}
 	out := fmt.Sprintf("%ds", int(d.Seconds()))
