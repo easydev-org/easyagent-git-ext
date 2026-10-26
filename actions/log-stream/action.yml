@@ -15,10 +15,12 @@ inputs:
     required: true
   token:
     description: >-
-      Token used to create and update the check run. Pass `${{ github.token }}`: a composite action
-      does NOT inherit the caller's environment, so a secret cannot be picked up implicitly — which
-      is the mistake that made the first version report "GITHUB_TOKEN must be set" inside a job
-      that had one.
+      Token used to create and update the check run. The caller passes github.token.
+      TWO reasons it cannot be implicit, both found the hard way:
+        - a composite action does not inherit the caller's environment, and
+        - the `github` context does not exist inside action.yml at all, so writing
+          ${{ github.token }} HERE is a template error the runner refuses to load.
+      Only the workflow can supply it.
     required: true
   name:
     description: >-
@@ -44,7 +46,8 @@ runs:
     - name: stream output
       shell: bash
       env:
-        # Passed explicitly: a composite action gets the caller's env only for what it declares.
+        # The token arrives as an input, because neither the caller's env nor the `github` context
+        # reaches this file.
         GITHUB_TOKEN: ${{ inputs.token }}
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_NAME: ${{ inputs.name }}
