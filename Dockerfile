@@ -13,6 +13,14 @@
 # wrong". Keeping the toolchain here also means a contributor needs nothing but Docker.
 FROM node:26-alpine AS ui
 WORKDIR /ui
+# Bump this to force `npm run build` to re-run.
+#
+# Docker caches a layer on its inputs; when a source file changes the COPY invalidates it, but when
+# only the BUILD CACHE is stale (a restored gha cache from an earlier run) the old dist/ can be
+# reused. It is rare and it is invisible: the image builds, the UI loads, and it behaves like the
+# previous version.
+ARG UI_BUILD=2
+RUN echo "ui build ${UI_BUILD}"
 # The lockfile is committed (see .gitignore: node_modules is not, the lock is). `npm ci` requires it,
 # so the image is reproducible and a drift between package.json and the lock fails here instead of
 # resolving something new at build time.
@@ -27,6 +35,12 @@ RUN npm run build
 # happened: the `ui` job passed (it builds the bundle separately) while the image shipped without it.
 # Checking here makes the failure land where the mistake is.
 RUN test -f /ui/dist/index.html || (echo "FATAL: vite produced no index.html" >&2; ls -la /ui; exit 1)
+# And that the bundle is not a stale layer: this marker only exists in the current API client.
+#
+# A cached `npm run build` ships a bundle that looks fine and behaves like the previous version,
+# which is indistinguishable from "the fix did not work" when all you have is a browser. Greping a
+# marker turns that into a build failure that names the marker.
+RUN grep -q 'agent.token' /ui/dist/assets/*.js || (echo "FATAL: the built bundle is STALE (no agent.token in dist); the build layer was cached" >&2; ls -la /ui/dist/assets; exit 1)
 
 FROM golang:1.26-alpine AS build
 WORKDIR /build
