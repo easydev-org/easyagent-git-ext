@@ -37,6 +37,23 @@
   let loading = $state(false)
   let tab = $state<'code' | 'changes' | 'log'>('code')
 
+  // Narrow = the panel is a phone-sized column, where a 240px tree beside a file leaves neither
+  // enough room. On a narrow screen the tree and the file are SEPARATE PAGES: picking a file shows
+  // it full width with a back arrow, which is what a phone file browser does.
+  //
+  // 720px rather than the host's 640px because this UI also runs inside a SIDE PANEL on a desktop,
+  // where the available width is the panel's, not the window's.
+  let narrow = $state(false)
+  onMount(() => {
+    const mq = window.matchMedia('(max-width: 720px)')
+    const on = (): void => {
+      narrow = mq.matches
+    }
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  })
+
   const wsID = $derived(route.kind === 'root' ? '' : route.ws)
 
   function go(hash: string): void {
@@ -128,16 +145,28 @@
   {/if}
 {:else}
   <div class="layout">
-    <aside>
-      <Tree
-        {entries}
-        dir={route.kind === 'tree' ? route.dir : ''}
-        ws={wsID}
-        activePath={route.kind === 'blob' ? route.path : ''}
-        {go}
-      />
-    </aside>
+    <!-- NARROW: one page at a time. The tree is the first page; opening a file replaces it and the
+         back arrow returns. Showing both side by side on a phone leaves ~120px for each.
+         WIDE: the tree is a fixed rail and the content fills the rest, which is how this reads
+         best inside the host's side panel. -->
+    <!-- On a narrow screen the tree belongs to the TREE PAGE only. Changes and History are their own
+         pages with their own tabs; leaving the rail visible there halves the width for content that
+         does not need a file list. -->
+    {#if !narrow || route.kind === 'tree'}
+      <aside>
+        <Tree
+          {entries}
+          dir={route.kind === 'tree' ? route.dir : ''}
+          ws={wsID}
+          activePath={route.kind === 'blob' ? route.path : ''}
+          {go}
+        />
+      </aside>
+    {/if}
 
+    <!-- The tree page's own content would be an empty "Select a file." panel beside the rail, so it
+         is not rendered on a narrow screen — the tree IS that page. -->
+    {#if !(narrow && route.kind === 'tree')}
     <main>
       <nav class="tabs">
         <button class:active={tab === 'code'} onclick={() => go(`#/ws/${wsID}/tree/`)}>Code</button>
@@ -151,7 +180,8 @@
         {#if loading}
           <div class="state muted">Loading…</div>
         {:else if tab === 'code'}
-          <CodePane {file} />
+          <!-- On a narrow screen the file is its own page, so it needs a way back to the list. -->
+          <CodePane {file} onback={narrow && route.kind === 'blob' ? () => go(`#/ws/${wsID}/tree/`) : null} />
         {:else if tab === 'changes'}
           <DiffPane {changes} {branch} {diff} {go} ws={wsID} />
         {:else}
@@ -168,6 +198,7 @@
         {/if}
       </div>
     </main>
+    {/if}
   </div>
 {/if}
 
@@ -184,6 +215,19 @@
     overflow: auto;
     padding: var(--sp-sm);
   }
+  /* Narrow: the tree IS the page, so it takes the whole area and needs no divider. */
+  @media (max-width: 720px) {
+    aside {
+      width: 100%;
+      flex: 1 1 auto;
+      border-right: 0;
+    }
+    /* The tabs are a 44px-tall target on a touch screen; a 4px gap between them is a mis-tap
+       waiting to happen. */
+    .tabs button {
+      padding: 8px 12px;
+    }
+  }
   main {
     flex: 1;
     min-width: 0;
@@ -195,6 +239,12 @@
     gap: var(--sp-xs);
     padding: var(--sp-sm);
     border-bottom: 1px solid var(--border);
+    /* The row must be reachable while a file is scrolled long: sticky keeps Changes one tap away
+       instead of a scroll to the top. */
+    position: sticky;
+    top: 0;
+    background: var(--background);
+    z-index: 1;
   }
   .tabs button {
     font: inherit;
