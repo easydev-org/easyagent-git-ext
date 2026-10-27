@@ -70,17 +70,23 @@ func writeErr(w http.ResponseWriter, err error) {
 	writeJSON(w, code, map[string]any{"error": err.Error()})
 }
 
-// Register wires the UI's endpoints onto mux.
+// Register wires the UI's endpoints onto mux, under `prefix`.
 //
-// Paths live under /api/v1/ui/ so they cannot collide with the UI's static assets or with the
-// existing /api/v1/health probe.
-func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("/api/v1/ui/workspaces", h.listWorkspaces)
-	mux.HandleFunc("/api/v1/ui/tree", h.tree)
-	mux.HandleFunc("/api/v1/ui/file", h.file)
-	mux.HandleFunc("/api/v1/ui/status", h.status)
-	mux.HandleFunc("/api/v1/ui/diff", h.diff)
-	mux.HandleFunc("/api/v1/ui/log", h.log)
+// The prefix MUST be the same one the UI is mounted at (UISpec.Base), because the host proxies only
+// that prefix to this extension. The API originally lived at /api/v1/ui/ — an absolute path that
+// the UI, served from /ext/github/, then requested from the HOST's root, where it fell through to
+// the host's SPA and returned HTML. Every call failed with a JSON parse error and no 404 to point
+// at it.
+//
+// Keeping the API under the UI's own prefix also means one reverse-proxy rule covers both.
+func (h *Handler) Register(mux *http.ServeMux, prefix string) {
+	p := strings.TrimSuffix(prefix, "/") + "/api/"
+	mux.HandleFunc(p+"workspaces", h.listWorkspaces)
+	mux.HandleFunc(p+"tree", h.tree)
+	mux.HandleFunc(p+"file", h.file)
+	mux.HandleFunc(p+"status", h.status)
+	mux.HandleFunc(p+"diff", h.diff)
+	mux.HandleFunc(p+"log", h.log)
 }
 
 func (h *Handler) listWorkspaces(w http.ResponseWriter, r *http.Request) {

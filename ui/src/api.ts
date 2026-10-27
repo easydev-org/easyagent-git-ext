@@ -37,7 +37,14 @@ export interface LogEntry {
 /** The (tenant, session) scope that owns the workspace, taken from the host's query string. */
 const scope = new URLSearchParams(location.search)
 
-const BASE = '/api/v1/ui/'
+// RELATIVE to the page, not absolute.
+//
+// The UI is served from /ext/github/, and the host proxies only that prefix here. An absolute
+// '/api/v1/ui/' would be requested from the HOST's root, where it hits the host's SPA and returns
+// HTML — every call then fails parsing HTML as JSON, with nothing in the console naming the path.
+//
+// `api/` resolves against the current document's directory: /ext/github/ + api/ = /ext/github/api/.
+const BASE = new URL('api/', location.href).pathname
 
 function qs(extra: Record<string, string | undefined>): string {
   const p = new URLSearchParams(scope)

@@ -30,6 +30,14 @@ var manifestYAML []byte
 //go:embed all:ui
 var uiFiles embed.FS
 
+// uiBase is where this extension's UI — and therefore its API — is mounted.
+//
+// ONE constant for three consumers that must agree: UISpec.Base (what the static handler claims),
+// the API routes (what the JSON handlers claim), and the host's reverse-proxy rule. When they
+// disagreed, an API path fell through to the SPA and answered with an HTML document; the browser's
+// JSON parse failed and no 404 pointed at the path that was wrong.
+const uiBase = "/ext/github"
+
 // uiMux builds the extension's HTTP surface: the health/version probes plus the UI's data API.
 //
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
@@ -45,7 +53,7 @@ func uiMux(ws *workspace.Manager, ver string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"github","version":"` + ver + `"}`))
 	})
-	(&uihandler.Handler{Workspaces: ws}).Register(mux)
+	(&uihandler.Handler{Workspaces: ws}).Register(mux, uiBase)
 	return mux
 }
 
@@ -165,8 +173,11 @@ func main() {
 		UI: &extension.UISpec{
 			Assets:      uiFiles,
 			StripPrefix: "ui",
-			Base:        "/ext/github",
-			Title:       "GitHub",
+			Base:        uiBase,
+			// /ext/github/api/* belongs to the handlers, not the bundle. Without this the SPA
+			// fallback answers it with index.html, and the UI's fetch fails parsing HTML as JSON.
+			APIPrefix: "/api",
+			Title:     "GitHub",
 		},
 		// API routes the UI reads from. They answer from the LOCAL workspace, never api.github.com:
 		// see internal/uihandler.
