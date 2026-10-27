@@ -33,13 +33,24 @@ import (
 )
 
 // ErrNoWorkspace means no workspace exists for that id.
-var ErrNoWorkspace = errors.New("no workspace with that id")
+//
+// The MESSAGE is written for whoever reads it — a person looking at a panel that failed to load, or
+// a model deciding what to do next. It used to be "no workspace with that id", which is true and
+// useless: the common cause is not a typo but a RESTART. The registry is in memory on purpose (a
+// checkout is a scratchpad, and a stale handle to a directory that moved is worse than none), so
+// every pod restart drops every handle while the ids in old chat messages still look valid.
+//
+// Saying that turns a dead end into one next step.
+var ErrNoWorkspace = errors.New(
+	"no such workspace — it may have expired. Workspaces live in memory, so a service restart " +
+		"clears them; run git-ws-clone again to get a new one")
 
 // ErrNotOwned means the workspace belongs to another session.
 //
 // Checked rather than ignored: an id is a capability, and a session that guessed another's id
 // must not be able to read or push its work.
-var ErrNotOwned = errors.New("that workspace belongs to a different session")
+var ErrNotOwned = errors.New(
+	"that workspace belongs to a different session — clone your own with git-ws-clone")
 
 // Workspace is one session's checkout.
 type Workspace struct {
@@ -170,7 +181,9 @@ func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, err
 // Get returns a workspace, verifying the caller owns it.
 func (m *Manager) Get(id, tenant, session string) (*Workspace, error) {
 	if !IDPattern.MatchString(id) {
-		return nil, ErrNoWorkspace
+		// A malformed id is NOT an expired one. Reporting "may have expired, clone again" for a
+		// truncated id would send the reader to redo work that was never the problem.
+		return nil, fmt.Errorf("%w (id %q is not a workspace id)", ErrNoWorkspace, id)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

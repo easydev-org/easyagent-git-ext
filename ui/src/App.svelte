@@ -104,7 +104,17 @@
   {#if workspaces.length === 0}
     <div class="state">
       No workspace in this session.
-      <div class="muted t-meta">Clone one first — the agent's git-ws-clone tool creates it.</div>
+      <div class="muted t-meta">
+        Ask the agent to run <span class="mono">git-ws-clone</span> — it returns the id this panel
+        opens.
+      </div>
+      <!-- Workspaces live in memory, so a restart clears them. An old tool card still LOOKS
+           clickable after that, so say it here rather than leaving the reader to guess why a
+           workspace they used a minute ago is gone. -->
+      <div class="muted t-meta">
+        An empty list can also mean the service restarted: workspaces are kept in memory and do not
+        survive it. Cloning again is the fix, not a retry.
+      </div>
     </div>
   {:else}
     <div class="picker">
