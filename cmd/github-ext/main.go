@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"fmt"
 	"log/slog"
 	"net/http"
