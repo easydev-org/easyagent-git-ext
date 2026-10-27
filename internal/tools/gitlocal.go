@@ -33,14 +33,14 @@ func (t *toolset) gws(args map[string]any, session, tenant string) (*workspace.W
 		// errors.Is, not ==: the workspace package wraps ErrNoWorkspace to explain a malformed id,
 		// and an identity comparison would miss it and fall through to an opaque "workspace: ...".
 		if errors.Is(gerr, workspace.ErrNoWorkspace) {
-			return nil, errArg("%v", gerr)
+			return nil, errArg(gerr.Error())
 		}
 		// NotOwned reports the SAME text as not-found. Confirming that an id EXISTS under another
 		// session would tell a caller that somebody else is working on this repository — and the id
 		// is a capability, so "it exists but is not yours" is information they should not have.
 		// The distinction stays in the ERROR VALUE for code; only the message is flattened.
 		if errors.Is(gerr, workspace.ErrNotOwned) {
-			return nil, errArg("%v", workspace.ErrNoWorkspace)
+			return nil, errArg(workspace.ErrNoWorkspace.Error())
 		}
 		return nil, errFailed("workspace: %v", gerr)
 	}
