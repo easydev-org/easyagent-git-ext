@@ -56,8 +56,13 @@ jobs:
         run: |
           set -euo pipefail
           grep -q 'base: *["'"'"']/ext/github/["'"'"']' ui/vite.config.ts
-          grep -q 'Base: *"/ext/github"' cmd/github-ext/main.go
-          echo "vite base and UISpec.Base agree"
+          # main.go declares the mount point ONCE (`const uiBase = "/ext/github"`), and UISpec.Base
+          # references it, so the check is that the constant still says what Vite builds for. The
+          # earlier grep looked for a literal in the UISpec struct — it broke the moment the value
+          # became a constant, which is exactly the kind of coupling this check should not have.
+          grep -q 'const uiBase = "/ext/github"' cmd/github-ext/main.go
+          grep -q 'Base: *uiBase' cmd/github-ext/main.go
+          echo "vite base and uiBase agree"
           grep -o 'src="[^"]*"' ui/dist/index.html | head -5
 
   # The extension against a REAL broker and a REAL GitHub repository.
