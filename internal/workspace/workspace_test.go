@@ -39,14 +39,34 @@ func TestGetEnforcesOwnership(t *testing.T) {
 }
 
 // A malformed id must be rejected before it can name a filesystem path.
+//
+// It gets its OWN error, not ErrNoWorkspace: "expired, clone again" is the wrong advice for a typo,
+// and the two cases need different answers.
 func TestGetRejectsMalformedID(t *testing.T) {
 	m := newTestManager(t)
 	for _, bad := range []string{
 		"", "../../etc", "0123456789abcde", "0123456789abcdef0",
 		"0123456789ABCDEF", "0123456789abcde/", "0123456789abcdeg",
 	} {
-		if _, err := m.Get(bad, "alice", "s1"); err != ErrNoWorkspace {
-			t.Errorf("Get(%q) = %v, want ErrNoWorkspace", bad, err)
+		if _, err := m.Get(bad, "alice", "s1"); err != ErrBadWorkspaceID {
+			t.Errorf("Get(%q) = %v, want ErrBadWorkspaceID", bad, err)
+		}
+	}
+}
+
+// A well-formed id that is not registered is the EXPIRED case, and must say so.
+//
+// This is the message a user actually reads: the common cause is a service restart clearing the
+// in-memory registry, not a typo, so it has to name that and the one next step.
+func TestGetUnknownIDExplainsExpiry(t *testing.T) {
+	m := newTestManager(t)
+	_, err := m.Get("0123456789abcdef", "alice", "s1")
+	if err != ErrNoWorkspace {
+		t.Fatalf("err = %v, want ErrNoWorkspace", err)
+	}
+	for _, want := range []string{"expired", "git-ws-clone"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message %q does not mention %q", err.Error(), want)
 		}
 	}
 }

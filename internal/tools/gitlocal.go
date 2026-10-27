@@ -35,6 +35,10 @@ func (t *toolset) gws(args map[string]any, session, tenant string) (*workspace.W
 		if errors.Is(gerr, workspace.ErrNoWorkspace) {
 			return nil, errArg(gerr.Error())
 		}
+		// A malformed id is the caller's typo, not an expiring handle: say which field is wrong.
+		if errors.Is(gerr, workspace.ErrBadWorkspaceID) {
+			return nil, errArg("workspace is not a valid id: " + id)
+		}
 		// NotOwned reports the SAME text as not-found. Confirming that an id EXISTS under another
 		// session would tell a caller that somebody else is working on this repository — and the id
 		// is a capability, so "it exists but is not yours" is information they should not have.

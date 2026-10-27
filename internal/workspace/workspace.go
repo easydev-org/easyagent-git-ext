@@ -45,6 +45,13 @@ var ErrNoWorkspace = errors.New(
 	"no such workspace — it may have expired. Workspaces live in memory, so a service restart " +
 		"clears them; run git-ws-clone again to get a new one")
 
+// ErrBadWorkspaceID means the id is not even shaped like one.
+//
+// Kept SEPARATE from ErrNoWorkspace: an expired handle and a malformed string need different
+// answers ("clone again" vs "that is not an id"), and folding them together sends the reader to redo
+// work that was never the problem.
+var ErrBadWorkspaceID = errors.New("that is not a workspace id")
+
 // ErrNotOwned means the workspace belongs to another session.
 //
 // Checked rather than ignored: an id is a capability, and a session that guessed another's id
@@ -181,9 +188,7 @@ func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, err
 // Get returns a workspace, verifying the caller owns it.
 func (m *Manager) Get(id, tenant, session string) (*Workspace, error) {
 	if !IDPattern.MatchString(id) {
-		// A malformed id is NOT an expired one. Reporting "may have expired, clone again" for a
-		// truncated id would send the reader to redo work that was never the problem.
-		return nil, fmt.Errorf("%w (id %q is not a workspace id)", ErrNoWorkspace, id)
+		return nil, ErrBadWorkspaceID
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
