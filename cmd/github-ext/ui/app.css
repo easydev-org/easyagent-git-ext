@@ -1,0 +1,110 @@
+/* Deliberately small and theme-neutral: the host renders this in a panel with its own palette, so
+   the less this file asserts, the better it blends. Colours are inherited where possible. */
+:root {
+  --fg: #1f2328;
+  --muted: #656d76;
+  --bg: #ffffff;
+  --line: #d0d7de;
+  --panel: #f6f8fa;
+  --accent: #0969da;
+  --add: #1a7f37;
+  --del: #cf222e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --bg: #0d1117;
+    --line: #30363d;
+    --panel: #161b22;
+    --accent: #4493f8;
+    --add: #3fb950;
+    --del: #f85149;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  font: 13px/1.5 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+button:hover { background: var(--panel); }
+
+.layout { display: flex; height: 100%; min-height: 0; }
+
+.side {
+  width: 240px;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--line);
+  overflow: auto;
+  padding: 6px;
+}
+
+.main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.tabs button[aria-selected="true"] {
+  background: var(--panel);
+  font-weight: 600;
+}
+
+.body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+.row:hover { background: var(--panel); }
+.row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .kind { color: var(--muted); flex: 0 0 auto; }
+
+.muted { color: var(--muted); }
+.err { color: var(--del); white-space: pre-wrap; }
+
+pre.code {
+  margin: 0;
+  padding: 8px;
+  background: var(--panel);
+  border-radius: 6px;
+  overflow: auto;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  tab-size: 4;
+}
+
+/* Diff: coloured by line prefix, which is what a unified diff already encodes. */
+pre.diff { margin: 0; font: 12px/1.45 ui-monospace, Menlo, monospace; }
+pre.diff .add { color: var(--add); }
+pre.diff .del { color: var(--del); }
+pre.diff .hunk { color: var(--accent); }
+pre.diff .meta { color: var(--muted); }
+
+.crumb { display: flex; gap: 4px; align-items: center; padding: 0 0 8px; flex-wrap: wrap; }
+.crumb button { padding: 1px 4px; }
+
+.empty { padding: 24px; text-align: center; color: var(--muted); }

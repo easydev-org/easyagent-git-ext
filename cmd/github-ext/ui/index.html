@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <!--
+      No build step and no framework, on purpose: this file is embedded into the Go binary with
+      go:embed, so a bundler would add a build chain to a repository whose only other toolchain is
+      Go. The UI is a file tree, a viewer and a diff pane — plain DOM is enough, and it keeps the
+      whole thing reviewable in one place.
+    -->
+    <div id="app"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
