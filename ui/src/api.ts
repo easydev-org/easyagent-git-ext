@@ -70,7 +70,18 @@ window.addEventListener('message', (ev: MessageEvent) => {
   done({ ok: Boolean(d.ok), status: d.status ?? 0, body: d.body, error: d.error })
 })
 
+/**
+ * Whether this document is running inside a host frame.
+ *
+ * When it is, requests go through the host's bridge because only the host holds the bearer.
+ * When it is NOT — the UI opened directly, which is how it is debugged — there is no host to ask,
+ * so requests go straight to the same origin. That keeps the UI usable standalone instead of
+ * hanging for five seconds on every call with no way to see why.
+ */
+const IN_FRAME = window.parent !== window
+
 function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
+  if (!IN_FRAME) return direct(path)
   return new Promise(resolve => {
     const id = `${Date.now()}-${++seq}`
     // A host that never answers would hang the panel forever with no clue; five seconds is far more
@@ -85,6 +96,23 @@ function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknow
     })
     HOST.postMessage({ type: BRIDGE_REQUEST, id, path }, '*')
   })
+}
+
+/** Same-origin fetch, used only when this document has no host (standalone debugging). */
+async function direct(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
+  try {
+    const r = await fetch(`api/${path}`, { headers: { accept: 'application/json' } })
+    const text = await r.text()
+    let body: unknown = text
+    try {
+      body = JSON.parse(text)
+    } catch {
+      // keep the raw text so the panel can show what actually came back
+    }
+    return { ok: r.ok, status: r.status, body }
+  } catch (e) {
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 async function get<T>(path: string, params: Record<string, string | undefined> = {}): Promise<T> {
