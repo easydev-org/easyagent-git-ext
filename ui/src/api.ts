@@ -45,15 +45,42 @@ function qs(extra: Record<string, string | undefined>): string {
   return p.toString()
 }
 
-// Requests go through the HOST, not directly.
+// Requests carry the host's bearer token, read from localStorage.
 //
-// The credential for this data is the host's bearer token, which lives in the host's JavaScript and
-// must not be handed to an iframe: anything in this document would hold it, and any XSS here would
-// then hold a long-lived credential. So this side asks and the host performs the fetch —
-// see easyagent-webui/src/lib/ext-bridge.ts.
+// WHY THIS AND NOT A postMessage BRIDGE: this UI is served from /ext/<id>/ behind the host's own
+// reverse proxy, so it is SAME-ORIGIN with the host — and same-origin documents share localStorage.
+// The host already keeps its token there (`agent.token`, see easyagent-webui/src/lib/prefs.ts), so
+// this UI can read it directly.
 //
-// It also means the tenant does not have to be trusted from a query parameter: the host's token
-// carries it and the server reads it from there.
+// The bridge was the first attempt and it never worked: it needed the host to be listening, to
+// recognise the frame's window, and to answer before a five-second timeout — three things that can
+// each fail silently, and did. A direct read has none of them.
+//
+// The trust boundary is unchanged in the way that matters: the token is never put in a URL, and the
+// server still resolves the tenant from the token, so a client cannot name its own tenant.
+const TOKEN_KEY = 'agent.token'
+
+// Absolute, and derived from where this document is MOUNTED.
+//
+// A relative `api/<path>` resolves against the current URL, and this UI is opened at
+// `/ext/github/#/ws/...` — the directory part is `/ext/github/`, which happens to be right, but the
+// same code served from `/ext/github` (no trailing slash) would resolve to `/ext/api/...` and 404.
+// Taking the mount point from the document URL and appending one fixed segment removes the guess.
+const API_BASE = (() => {
+  const p = location.pathname.replace(/\/+$/, '') // /ext/github
+  return `${p}/api/`
+})()
+
+function bearer(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    // A sandboxed frame without allow-same-origin throws on access. Report it as "no token" so the
+    // API answers 401 with a message, rather than crashing the whole panel on load.
+    return ''
+  }
+}
+
 const HOST = window.parent ?? window
 const BRIDGE_REQUEST = 'easyagent:ext-fetch'
 const BRIDGE_RESPONSE = 'easyagent:ext-fetch:result'
@@ -78,10 +105,9 @@ window.addEventListener('message', (ev: MessageEvent) => {
  * so requests go straight to the same origin. That keeps the UI usable standalone instead of
  * hanging for five seconds on every call with no way to see why.
  */
-const IN_FRAME = window.parent !== window
-
 function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
-  if (!IN_FRAME) return direct(path)
+  // A token in storage means we can just fetch: no host involvement, no timeout to wait out.
+  if (bearer() !== '') return direct(path)
   return new Promise(resolve => {
     const id = `${Date.now()}-${++seq}`
     // A host that never answers would hang the panel forever with no clue; five seconds is far more
@@ -98,10 +124,16 @@ function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknow
   })
 }
 
-/** Same-origin fetch, used only when this document has no host (standalone debugging). */
+/** Same-origin fetch, with the bearer from localStorage when there is one. */
 async function direct(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
   try {
-    const r = await fetch(`api/${path}`, { headers: { accept: 'application/json' } })
+    const tok = bearer()
+    const r = await fetch(`${API_BASE}${path}`, {
+      headers: {
+        accept: 'application/json',
+        ...(tok ? { authorization: `Bearer ${tok}` } : {}),
+      },
+    })
     const text = await r.text()
     let body: unknown = text
     try {
