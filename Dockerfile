@@ -13,10 +13,20 @@
 # wrong". Keeping the toolchain here also means a contributor needs nothing but Docker.
 FROM node:26-alpine AS ui
 WORKDIR /ui
-COPY ui/package.json ui/package-lock.json* ./
-RUN npm install --no-audit --no-fund
+# The lockfile is committed (see .gitignore: node_modules is not, the lock is). `npm ci` requires it,
+# so the image is reproducible and a drift between package.json and the lock fails here instead of
+# resolving something new at build time.
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY ui/ ./
 RUN npm run build
+# Fail the BUILD, not the deploy, if the bundle is empty.
+#
+# go:embed of an empty directory is legal, so a UI stage that produced nothing yields a binary with
+# no assets and an extension that 404s every UI path — with a green CI. That is exactly what
+# happened: the `ui` job passed (it builds the bundle separately) while the image shipped without it.
+# Checking here makes the failure land where the mistake is.
+RUN test -f /ui/dist/index.html || (echo "FATAL: vite produced no index.html" >&2; ls -la /ui; exit 1)
 
 FROM golang:1.26-alpine AS build
 WORKDIR /build
