@@ -25,22 +25,48 @@ import (
 // Handler answers the UI's JSON requests.
 type Handler struct {
 	Workspaces *workspace.Manager
+	// Identity resolves the caller's bearer to a tenant. REQUIRED: without it every request is
+	// refused, because the alternative is trusting a `?tenant=` parameter.
+	Identity *IdentityResolver
 }
 
 // scope is the (tenant, session) pair that owns a workspace.
 //
-// The UI cannot invent it: Manager.Get refuses a workspace the caller does not own, and that check
-// is the only thing standing between one session's checkout and another's. So the scope arrives as
-// explicit query parameters and is passed through untouched — this layer never guesses it.
+// TENANT IS NOT TAKEN FROM THE REQUEST. It is resolved from the bearer token, because a query
+// parameter is caller-controlled: `?tenant=victim` would otherwise read another tenant's checkout.
+// That was a real hole — an unauthenticated request with a chosen tenant answered 200 — and it is
+// why `who()` below exists.
+//
+// SESSION still comes from the query: it selects among a tenant's own workspaces, and
+// Manager.Get refuses one the caller does not own, so it can only ever narrow.
 type scope struct {
 	ws      string
 	tenant  string
 	session string
 }
 
-func scopeOf(r *http.Request) scope {
+// who resolves the caller's tenant, or an error the handler must turn into 401.
+func (h *Handler) who(r *http.Request) (string, error) {
+	if h.Identity == nil {
+		// Failing closed: a deployment that forgot to wire identity must not serve data.
+		return "", errors.New("identity is not configured")
+	}
+	b := bearerOf(r)
+	return h.Identity.Tenant(r.Context(), b)
+}
+
+// bearerOf reads the Authorization header, tolerating the case variations proxies introduce.
+func bearerOf(r *http.Request) string {
+	v := r.Header.Get("Authorization")
+	if len(v) > 7 && strings.EqualFold(v[:7], "bearer ") {
+		return strings.TrimSpace(v[7:])
+	}
+	return ""
+}
+
+func scopeOf(r *http.Request, tenant string) scope {
 	q := r.URL.Query()
-	return scope{ws: q.Get("ws"), tenant: q.Get("tenant"), session: q.Get("session")}
+	return scope{ws: q.Get("ws"), tenant: tenant, session: q.Get("session")}
 }
 
 func (h *Handler) ws(s scope) (*workspace.Workspace, error) {
@@ -53,6 +79,25 @@ func (h *Handler) ws(s scope) (*workspace.Workspace, error) {
 	return h.Workspaces.Get(s.ws, s.tenant, s.session)
 }
 
+// authedWS is the entry point every workspace handler uses: authenticate, then load.
+//
+// One helper rather than the same two steps per handler, because a handler that forgot the first
+// step would silently serve another tenant's data — the mistake this whole change exists to close.
+// Returning the error keeps the decision to 401 in writeErr, where it is made once.
+func (h *Handler) authedWS(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, bool) {
+	tenant, err := h.who(r)
+	if err != nil {
+		writeErr(w, err)
+		return nil, false
+	}
+	ws, err := h.ws(scopeOf(r, tenant))
+	if err != nil {
+		writeErr(w, err)
+		return nil, false
+	}
+	return ws, true
+}
+
 // writeJSON is the only way this package answers, so an error is always the same shape and the UI
 // has one branch to handle instead of guessing per endpoint.
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -63,7 +108,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, err error) {
 	code := http.StatusBadRequest
-	if errors.Is(err, workspace.ErrNoWorkspace) || errors.Is(err, workspace.ErrNotOwned) {
+	switch {
+	case errors.Is(err, ErrUnauthenticated):
+		code = http.StatusUnauthorized
+	case errors.Is(err, workspace.ErrNoWorkspace), errors.Is(err, workspace.ErrNotOwned):
 		// 404 rather than 403 for NotOwned: telling a caller that someone else's workspace exists is
 		// information they do not need.
 		code = http.StatusNotFound
@@ -95,8 +143,15 @@ func (h *Handler) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errors.New("workspaces are not configured"))
 		return
 	}
+	// The tenant comes from the token, not the query: listing another tenant's checkouts would
+	// disclose their repositories even though each read below is ownership-checked.
+	tenant, err := h.who(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	q := r.URL.Query()
-	list := h.Workspaces.List(q.Get("tenant"), q.Get("session"))
+	list := h.Workspaces.List(tenant, q.Get("session"))
 	out := make([]map[string]any, 0, len(list))
 	for _, ws := range list {
 		out = append(out, map[string]any{
@@ -157,9 +212,8 @@ type fileNode struct {
 }
 
 func (h *Handler) tree(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.ws(scopeOf(r))
-	if err != nil {
-		writeErr(w, err)
+	ws, ok := h.authedWS(w, r)
+	if !ok {
 		return
 	}
 	files, err := ws.ListFiles()
@@ -196,9 +250,8 @@ func (h *Handler) tree(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) file(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.ws(scopeOf(r))
-	if err != nil {
-		writeErr(w, err)
+	ws, ok := h.authedWS(w, r)
+	if !ok {
 		return
 	}
 	p := r.URL.Query().Get("path")
@@ -228,9 +281,8 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.ws(scopeOf(r))
-	if err != nil {
-		writeErr(w, err)
+	ws, ok := h.authedWS(w, r)
+	if !ok {
 		return
 	}
 	st, err := ws.Status()
@@ -242,9 +294,8 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) diff(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.ws(scopeOf(r))
-	if err != nil {
-		writeErr(w, err)
+	ws, ok := h.authedWS(w, r)
+	if !ok {
 		return
 	}
 	q := r.URL.Query()
@@ -260,9 +311,8 @@ func (h *Handler) diff(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) log(w http.ResponseWriter, r *http.Request) {
-	ws, err := h.ws(scopeOf(r))
-	if err != nil {
-		writeErr(w, err)
+	ws, ok := h.authedWS(w, r)
+	if !ok {
 		return
 	}
 	// Bounded: an unbounded log of a large repository is megabytes for a panel that shows a dozen

@@ -43,7 +43,7 @@ const uiBase = "/ext/github"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ws *workspace.Manager, ver string) http.Handler {
+func uiMux(ws *workspace.Manager, ver, agentURL string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -53,7 +53,13 @@ func uiMux(ws *workspace.Manager, ver string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"github","version":"` + ver + `"}`))
 	})
-	(&uihandler.Handler{Workspaces: ws}).Register(mux, uiBase)
+	// Identity resolves a caller's bearer to a tenant by asking the agent, which owns the token
+	// table. Without this the UI API would have to trust `?tenant=`, i.e. let anyone read any
+	// tenant's checkout by naming it.
+	(&uihandler.Handler{
+		Workspaces: ws,
+		Identity:   &uihandler.IdentityResolver{AgentURL: agentURL},
+	}).Register(mux, uiBase)
 	return mux
 }
 
@@ -181,7 +187,9 @@ func main() {
 		},
 		// API routes the UI reads from. They answer from the LOCAL workspace, never api.github.com:
 		// see internal/uihandler.
-		Handler: uiMux(wsMgr, m.Version),
+		// AGENT_URL, not NATS: the UI API authenticates by asking the agent, which is the only
+		// component that can map a bearer to a tenant.
+		Handler: uiMux(wsMgr, m.Version, envOr("AGENT_URL", "http://agent.dev.svc.cluster.local")),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("listening", "nats", natsURL)
 			// Reap abandoned workspaces. Without this a long-lived pod fills its disk with

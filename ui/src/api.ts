@@ -37,15 +37,6 @@ export interface LogEntry {
 /** The (tenant, session) scope that owns the workspace, taken from the host's query string. */
 const scope = new URLSearchParams(location.search)
 
-// RELATIVE to the page, not absolute.
-//
-// The UI is served from /ext/github/, and the host proxies only that prefix here. An absolute
-// '/api/v1/ui/' would be requested from the HOST's root, where it hits the host's SPA and returns
-// HTML — every call then fails parsing HTML as JSON, with nothing in the console naming the path.
-//
-// `api/` resolves against the current document's directory: /ext/github/ + api/ = /ext/github/api/.
-const BASE = new URL('api/', location.href).pathname
-
 function qs(extra: Record<string, string | undefined>): string {
   const p = new URLSearchParams(scope)
   for (const [k, v] of Object.entries(extra)) {
@@ -54,13 +45,56 @@ function qs(extra: Record<string, string | undefined>): string {
   return p.toString()
 }
 
+// Requests go through the HOST, not directly.
+//
+// The credential for this data is the host's bearer token, which lives in the host's JavaScript and
+// must not be handed to an iframe: anything in this document would hold it, and any XSS here would
+// then hold a long-lived credential. So this side asks and the host performs the fetch —
+// see easyagent-webui/src/lib/ext-bridge.ts.
+//
+// It also means the tenant does not have to be trusted from a query parameter: the host's token
+// carries it and the server reads it from there.
+const HOST = window.parent ?? window
+const BRIDGE_REQUEST = 'easyagent:ext-fetch'
+const BRIDGE_RESPONSE = 'easyagent:ext-fetch:result'
+
+let seq = 0
+const pending = new Map<string, (r: { ok: boolean; status: number; body?: unknown; error?: string }) => void>()
+
+window.addEventListener('message', (ev: MessageEvent) => {
+  const d = ev.data as { type?: string; id?: string; ok?: boolean; status?: number; body?: unknown; error?: string } | null
+  if (d?.type !== BRIDGE_RESPONSE || typeof d.id !== 'string') return
+  const done = pending.get(d.id)
+  if (!done) return
+  pending.delete(d.id)
+  done({ ok: Boolean(d.ok), status: d.status ?? 0, body: d.body, error: d.error })
+})
+
+function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
+  return new Promise(resolve => {
+    const id = `${Date.now()}-${++seq}`
+    // A host that never answers would hang the panel forever with no clue; five seconds is far more
+    // than a local file read needs.
+    const timer = setTimeout(() => {
+      pending.delete(id)
+      resolve({ ok: false, status: 0, error: 'the host did not answer' })
+    }, 5000)
+    pending.set(id, r => {
+      clearTimeout(timer)
+      resolve(r)
+    })
+    HOST.postMessage({ type: BRIDGE_REQUEST, id, path }, '*')
+  })
+}
+
 async function get<T>(path: string, params: Record<string, string | undefined> = {}): Promise<T> {
-  const r = await fetch(`${BASE}${path}?${qs(params)}`, { headers: { accept: 'application/json' } })
-  // The API always answers JSON, including errors, so a parse failure means the request never
-  // reached the handler (a proxy or base-path mistake) — say so rather than showing "{}".
-  const body = (await r.json().catch(() => null)) as { error?: string } | null
-  if (!r.ok) throw new Error(body?.error ?? `HTTP ${r.status} ${r.statusText}`)
-  return body as T
+  const r = await ask(`${path}?${qs(params)}`)
+  if (!r.ok) {
+    const body = r.body as { error?: string } | string | undefined
+    const msg = typeof body === 'string' ? body : body?.error
+    throw new Error(msg ?? r.error ?? `HTTP ${r.status}`)
+  }
+  return r.body as T
 }
 
 export const api = {
