@@ -77,7 +77,14 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 	b.WriteString("\nPass this id as `workspace` to every other git-* tool.")
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"workspace": w.ID, "repo": w.Repo, "files": len(files)},
+		Data: map[string]any{
+			"workspace": w.ID,
+			"repo":      w.Repo,
+			"files":     len(files),
+			// The id exists only as a result here — no argument and no manifest can name it — so the
+			// view route is built by the code that just created it.
+			"view": viewFor(w.ID, wsRoute(w.ID, "/tree/"), w.Repo),
+		},
 	}, nil
 }
 
@@ -122,7 +129,11 @@ func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, t
 		return extension.ToolResultData{}, errFailed("status: %v", serr)
 	}
 	if len(files) == 0 {
-		return extension.ToolResultData{Content: "clean (nothing changed)", Data: map[string]any{"files": files}}, nil
+		return extension.ToolResultData{Content: "clean (nothing changed)", Data: map[string]any{
+			"files": files,
+			// Still a view: the Changes pane is where a caller checks, and an empty one says so.
+			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+		}}, nil
 	}
 	var b strings.Builder
 	for _, f := range files {
@@ -135,7 +146,10 @@ func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, t
 	fmt.Fprintf(&b, "\n%d changed", len(files))
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"files": files, "count": len(files)},
+		Data: map[string]any{
+			"files": files, "count": len(files),
+			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+		},
 	}, nil
 }
 
@@ -184,7 +198,11 @@ func (t *toolset) gitRead(ctx context.Context, args map[string]any, session, ten
 	}
 	return extension.ToolResultData{
 		Content: numberLines(string(content)),
-		Data:    map[string]any{"path": path, "bytes": len(content)},
+		Data: map[string]any{
+			"path": path, "bytes": len(content),
+			// A read names one file, so the view is that file rather than the tree.
+			"view": viewFor(w.ID, wsRoute(w.ID, "/blob/"+escapePath(path)), path),
+		},
 	}, nil
 }
 
@@ -210,7 +228,10 @@ func (t *toolset) gitList(ctx context.Context, args map[string]any, session, ten
 	fmt.Fprintf(&b, "\n%d files", len(files))
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"files": files, "count": len(files)},
+		Data: map[string]any{
+			"files": files, "count": len(files),
+			"view": viewFor(w.ID, wsRoute(w.ID, "/tree/"), "Files"),
+		},
 	}, nil
 }
 
@@ -236,6 +257,9 @@ func (t *toolset) gitLog(ctx context.Context, args map[string]any, session, tena
 	fmt.Fprintf(&b, "\n%d commits", len(entries))
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"log": entries, "count": len(entries)},
+		Data: map[string]any{
+			"log": entries, "count": len(entries),
+			"view": viewFor(w.ID, wsRoute(w.ID, "/log"), "History"),
+		},
 	}, nil
 }

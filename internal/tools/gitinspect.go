@@ -27,7 +27,9 @@ func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, ten
 		return extension.ToolResultData{}, errFailed("diff: %v", derr)
 	}
 	if strings.TrimSpace(d) == "" {
-		return extension.ToolResultData{Content: "no changes"}, nil
+		return extension.ToolResultData{Content: "no changes", Data: map[string]any{
+			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+		}}, nil
 	}
 
 	// Capped: a large change would drown the turn, and the cap is stated rather than silent.
@@ -44,7 +46,10 @@ func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, ten
 	}
 	return extension.ToolResultData{
 		Content: out,
-		Data:    map[string]any{"truncated": truncated},
+		Data: map[string]any{
+			"truncated": truncated,
+			"view":      viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+		},
 	}, nil
 }
 
