@@ -308,7 +308,8 @@ func (w *Workspace) Log(limit int) ([]LogEntry, error) {
 	}
 	iter, err := r.Log(&git.LogOptions{From: head.Hash()})
 	if err != nil {
-		return nil, err
+		// go-git could not even start walking (a shallow clone with no parents on disk).
+		return w.logHeadOnly(r, head, limit), nil
 	}
 	defer iter.Close()
 
@@ -326,7 +327,35 @@ func (w *Workspace) Log(limit int) ([]LogEntry, error) {
 		})
 		return nil
 	})
-	return out, err
+	if err != nil && len(out) == 0 {
+		// A SHALLOW clone (`depth` > 0, which is what the tools default to) has no parents on disk,
+		// so walking history fails with go-git's "object not found". That is not a failure of the
+		// request: the one commit we DO have is a true answer to "what is the history here" for a
+		// shallow checkout, and it is what `git log` reports too.
+		//
+		// Returning that instead of the error is the difference between a History pane showing one
+		// commit and one showing "object not found" for every shallow clone.
+		return w.logHeadOnly(r, head, limit), nil
+	}
+	return out, nil
+}
+
+// logHeadOnly reads the commit HEAD points at, for a checkout whose parents are not on disk.
+func (w *Workspace) logHeadOnly(r *git.Repository, h *plumbing.Reference, limit int) []LogEntry {
+	if limit < 1 {
+		return nil
+	}
+	c, err := r.CommitObject(h.Hash())
+	if err != nil {
+		return nil
+	}
+	return []LogEntry{{
+		SHA:     c.Hash.String(),
+		Message: strings.TrimSpace(c.Message),
+		Author:  c.Author.Name,
+		Email:   c.Author.Email,
+		When:    c.Author.When.Format("2006-01-02 15:04:05"),
+	}}
 }
 
 // CurrentBranch is the checked-out branch, or "" when HEAD is detached.
