@@ -26,6 +26,38 @@ jobs:
       - name: test
         run: go test -race ./...
 
+  # The browser UI: types and a real build.
+  #
+  # Separate from `unit` on purpose. The Go job must stay fast and must not need Node, and a broken
+  # frontend must not look like a broken backend — the failure line should say which half is wrong.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm install --no-audit --no-fund
+        working-directory: ui
+      - name: types
+        run: npm run check
+        working-directory: ui
+      # A build, not just a typecheck: this is what go:embed will serve, and a bundling error (a bad
+      # base path, a missing import) only shows up here.
+      - name: build
+        run: npm run build
+        working-directory: ui
+      # The base path must match UISpec.Base in main.go or every asset 404s in the deployed image.
+      - name: base path matches the mount point
+        run: |
+          set -euo pipefail
+          grep -q 'base: *["'"'"']/ext/github/["'"'"']' ui/vite.config.ts
+          grep -q 'Base: *"/ext/github"' cmd/github-ext/main.go
+          echo "vite base and UISpec.Base agree"
+          grep -o 'src="[^"]*"' ui/dist/index.html | head -5
+
   # The extension against a REAL broker and a REAL GitHub repository.
   #
   # The agent is NOT part of this: a tool call is a request on

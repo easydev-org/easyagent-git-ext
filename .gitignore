@@ -1,0 +1,8 @@
+# The built UI: produced by the Dockerfile's `ui` stage and copied in for go:embed. Never committed,
+# because a stale bundle served in place of the real one looks like "the UI is wrong" rather than
+# "the build is wrong".
+cmd/github-ext/ui/*
+!cmd/github-ext/ui/.gitkeep
+
+ui/node_modules/
+ui/dist/

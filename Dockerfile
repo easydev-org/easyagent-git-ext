@@ -5,11 +5,27 @@
 # PORTABILITY: nothing environment-specific lives here. No internal mirror, no proxy, no
 # *.svc.cluster.local. A CI runner and a laptop build the same image; anything a particular
 # environment needs is supplied as a build-arg or by the container runtime.
+
+# The browser UI, built FIRST and copied into the Go tree before `go build`.
+#
+# It is a build stage rather than committed output: a stale dist/ in the repository would be served
+# in place of the real one, and the failure looks like "the UI is wrong" rather than "the build is
+# wrong". Keeping the toolchain here also means a contributor needs nothing but Docker.
+FROM node:26-alpine AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json* ./
+RUN npm install --no-audit --no-fund
+COPY ui/ ./
+RUN npm run build
+
 FROM golang:1.26-alpine AS build
 WORKDIR /build
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+# go:embed cannot reach outside the package directory, so the built UI is placed where
+# cmd/github-ext/ui declares it. See the //go:embed directive in main.go.
+COPY --from=ui /ui/dist ./cmd/github-ext/ui
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/github-ext ./cmd/github-ext

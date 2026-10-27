@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub</title>
+    <script>
+      // Apply the host's theme BEFORE first paint.
+      //
+      // Doing this in the app instead would render one light frame and then flip — a visible flash
+      // in dark mode, on every panel open, which is exactly what an embedded pane must not do. The
+      // value comes from `?theme=` (set by the host when it builds the iframe URL); `system` is the
+      // fallback so a standalone open still looks right.
+      ;(() => {
+        const q = new URLSearchParams(location.search).get('theme')
+        const m = q === 'dark' || q === 'light'
+          ? q
+          : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        document.documentElement.dataset.theme = m
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
