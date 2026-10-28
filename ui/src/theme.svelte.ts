@@ -60,3 +60,36 @@ export function reportCardHeight(): void {
   new ResizeObserver(send).observe(document.body)
   send()
 }
+
+const OPEN_VIEW_KEY = 'easyagent:open-view'
+
+/**
+ * Ask the HOST to open one of this extension's views.
+ *
+ * A card cannot navigate by itself: it is rendered inside a frame a few hundred pixels tall, so an
+ * `<a href="#/ws/…">` would open the full browser INSIDE that frame — the reader would be looking at
+ * a squeezed file tree and would have to collapse the card to escape. Only the host knows where a
+ * view belongs (the side panel on a wide screen, a full page on a phone).
+ *
+ * This is why the tool result declares `card` and `view` separately: the card knows which route is
+ * worth opening, the host decides how to present it.
+ */
+export function requestOpenView(route: string, title: string): void {
+  const parent = window.parent
+  if (!parent || parent === window) return
+  parent.postMessage(
+    { type: OPEN_VIEW_KEY, ext: extID(), route, title },
+    '*',
+  )
+}
+
+/**
+ * This extension's UI id, taken from the mount path.
+ *
+ * Derived rather than hardcoded so a rename of the Service or the mount cannot leave the card asking
+ * the host to open `/ext/<old-name>`. `/ext/github/?…` -> `github`.
+ */
+function extID(): string {
+  const m = /^\/ext\/([a-z0-9-]+)/.exec(location.pathname)
+  return m ? m[1]! : ''
+}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api, type Change, type LogEntry, type TreeEntry, type Workspace } from './api'
-  import { announceReady, reportCardHeight } from './theme.svelte'
+  import { announceReady, reportCardHeight, requestOpenView } from './theme.svelte'
   import CodePane from './CodePane.svelte'
   import DiffPane from './DiffPane.svelte'
   import Tree from './Tree.svelte'
@@ -166,7 +166,15 @@
         <dt>branch</dt>
         <dd class="mono">{cardBranch || cardWs.branch || '—'}</dd>
       </dl>
-      <a class="open" href={`#/ws/${cardWs.id}/tree/`}>Browse files →</a>
+      <!-- A BUTTON, not a link: navigating here would open the browser inside this frame, which is a
+           few hundred pixels tall. The host owns where views go. -->
+      <button
+        type="button"
+        class="open"
+        onclick={() => requestOpenView(`/ws/${cardWs!.id}/tree/`, cardWs!.repo || cardWs!.id)}
+      >
+        Browse files →
+      </button>
     {/if}
   </div>
 {:else if route.kind === 'root'}
@@ -376,6 +384,12 @@
     color: var(--primary);
     font-size: var(--text-meta, 12px);
     text-decoration: none;
+    /* A real <button> for the click, styled as the link it reads as. The UA's chrome has to go. */
+    background: none;
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    cursor: pointer;
   }
   .card-body .open:hover {
     text-decoration: underline;
