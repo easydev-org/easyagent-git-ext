@@ -17,9 +17,15 @@ func newTestManager(t *testing.T) *Manager {
 	return m
 }
 
-// A workspace id is a capability. A session must not reach another session's work by guessing
-// or reusing an id, so ownership is checked on EVERY access, not just the first.
-func TestGetEnforcesOwnership(t *testing.T) {
+// A workspace id is a capability, and the boundary is the TENANT.
+//
+// A session is NOT a boundary: the checkout is the tenant's own repository, and the same person
+// browsing from another conversation — or from the extension's own tab, which has no session at all
+// — must still be able to open it. Session-level ownership produced a list that showed a checkout
+// and a click that refused to open it.
+//
+// What MUST still hold is the tenant check, which is the second assertion below.
+func TestGetEnforcesTenantOwnership(t *testing.T) {
 	m := newTestManager(t)
 	// Register a workspace directly: Clone needs the network, and this test is about access.
 	w := &Workspace{ID: "0123456789abcdef", Repo: "o/r", Dir: t.TempDir(),
@@ -30,11 +36,16 @@ func TestGetEnforcesOwnership(t *testing.T) {
 	if _, err := m.Get(w.ID, "alice", "s1"); err != nil {
 		t.Fatalf("the owner should get it: %v", err)
 	}
-	if _, err := m.Get(w.ID, "alice", "s2"); err != ErrNotOwned {
-		t.Errorf("another session got the workspace: err = %v, want ErrNotOwned", err)
+	// Another session of the SAME tenant: allowed, because the tenant owns the checkout.
+	if _, err := m.Get(w.ID, "alice", "s2"); err != nil {
+		t.Errorf("another session of the same tenant was refused: %v", err)
 	}
+	// A different tenant: refused, whatever session it names.
 	if _, err := m.Get(w.ID, "bob", "s1"); err != ErrNotOwned {
 		t.Errorf("another tenant got the workspace: err = %v, want ErrNotOwned", err)
+	}
+	if _, err := m.Get(w.ID, "bob", ""); err != ErrNotOwned {
+		t.Errorf("another tenant got it by omitting the session: err = %v", err)
 	}
 }
 

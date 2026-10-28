@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 
@@ -52,12 +53,18 @@ var ErrNoWorkspace = errors.New(
 // work that was never the problem.
 var ErrBadWorkspaceID = errors.New("that is not a workspace id")
 
-// ErrNotOwned means the workspace belongs to another session.
+// ErrNotOwned means the workspace belongs to ANOTHER TENANT.
 //
-// Checked rather than ignored: an id is a capability, and a session that guessed another's id
-// must not be able to read or push its work.
-var ErrNotOwned = errors.New(
-	"that workspace belongs to a different session — clone your own with git-ws-clone")
+// The unit of ownership is the TENANT, not the session. A checkout is one of the tenant's own
+// resources — it is their repository, on their disk, discovered through their token — and the same
+// person browsing from a different conversation, or from the extension's own tab, is still the same
+// person. Session-level ownership made that impossible: a list could show a checkout and the very
+// next click would refuse to open it, which is not a security boundary but a broken link.
+//
+// What still holds, and must: an id is a capability, and ANOTHER TENANT that guesses one must not be
+// able to read or push the work. That is what this error now reports, and `Get` enforces it before
+// anything else.
+var ErrNotOwned = errors.New("that workspace belongs to a different tenant")
 
 // Workspace is one session's checkout.
 type Workspace struct {
@@ -185,8 +192,16 @@ func (m *Manager) CloneCtx(ctx context.Context, o CloneOptions) (*Workspace, err
 	return w, nil
 }
 
-// Get returns a workspace, verifying the caller owns it.
-func (m *Manager) Get(id, tenant, session string) (*Workspace, error) {
+// Get returns a workspace, verifying it belongs to the caller's TENANT.
+//
+// The session is still a parameter and still recorded on the workspace — it is what tells a reader
+// which conversation a checkout came from — but it is NOT an access boundary. Ownership is the
+// tenant's: the checkout is their repository on their disk, and moving between conversations (or
+// into the extension's own tab) does not change who owns it.
+//
+// `_` rather than a rename so callers keep passing the scope they have; an access check that ignores
+// a value should say so at the signature, not in a comment.
+func (m *Manager) Get(id, tenant, _ string) (*Workspace, error) {
 	if !IDPattern.MatchString(id) {
 		return nil, ErrBadWorkspaceID
 	}
@@ -196,14 +211,21 @@ func (m *Manager) Get(id, tenant, session string) (*Workspace, error) {
 	if !ok {
 		return nil, ErrNoWorkspace
 	}
-	if w.Tenant != tenant || w.Session != session {
+	// The ONLY tenancy check that remains, and the one that matters: an id is a capability, and
+	// another tenant that guesses one must not reach this work.
+	if w.Tenant != tenant {
 		return nil, ErrNotOwned
 	}
 	m.lastUse[id] = time.Now()
 	return w, nil
 }
 
-// List returns the caller's workspaces.
+// List returns the caller's workspaces, MOST RECENTLY USED FIRST.
+//
+// The ordering is not cosmetic: `List` is what a browser shows, and a map's iteration order would
+// reshuffle the list on every request. `lastUse` already exists — it decides which checkout to reap
+// when the disk fills — and it is exactly "when did anybody last touch this", which is the order a
+// reader expects.
 func (m *Manager) List(tenant, session string) []*Workspace {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -226,7 +248,20 @@ func (m *Manager) List(tenant, session string) []*Workspace {
 		}
 		out = append(out, w)
 	}
+	// Newest first. A workspace whose lastUse is missing falls back to its creation time, so a
+	// hand-built entry cannot sort as "older than everything".
+	sort.SliceStable(out, func(i, j int) bool {
+		return m.usedAt(out[i]).After(m.usedAt(out[j]))
+	})
 	return out
+}
+
+// usedAt is the last time this workspace was touched, falling back to when it was created.
+func (m *Manager) usedAt(w *Workspace) time.Time {
+	if t, ok := m.lastUse[w.ID]; ok {
+		return t
+	}
+	return w.CreatedAt
 }
 
 // Close removes a workspace from disk and forgets it.

@@ -1,6 +1,9 @@
 package workspace
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 /**
  * `List` with an EMPTY session means "all of this tenant's", not "the ones recorded with no session".
@@ -49,5 +52,46 @@ func TestListNeverCrossesTenants(t *testing.T) {
 
 	if got := m.List("alice", "s1"); len(got) != 0 {
 		t.Fatalf("alice saw bob's workspace: %+v", got)
+	}
+}
+
+// Newest activity first.
+//
+// A map's iteration order is random, so without this the browser list reshuffles on every request
+// — which reads as "the thing I just used moved somewhere". `lastUse` is the field that already
+// records "when did anybody last touch this", so it is the ordering, and a missing entry falls back
+// to creation time rather than sorting as older than everything.
+func TestListOrdersByRecentUse(t *testing.T) {
+	m := newTestManager(t)
+	m.areas["old"] = &Workspace{ID: "old", Tenant: "alice", Session: "s1"}
+	m.areas["mid"] = &Workspace{ID: "mid", Tenant: "alice", Session: "s1"}
+	m.areas["new"] = &Workspace{ID: "new", Tenant: "alice", Session: "s1"}
+
+	now := time.Now()
+	m.lastUse["old"] = now.Add(-2 * time.Hour)
+	m.lastUse["mid"] = now.Add(-1 * time.Hour)
+	m.lastUse["new"] = now
+
+	got := m.List("alice", "")
+	if len(got) != 3 {
+		t.Fatalf("got %d, want 3", len(got))
+	}
+	if got[0].ID != "new" || got[1].ID != "mid" || got[2].ID != "old" {
+		t.Errorf("order = %s,%s,%s; want new,mid,old", got[0].ID, got[1].ID, got[2].ID)
+	}
+}
+
+// A workspace with no recorded use sorts by when it was created, not as "infinitely old".
+func TestListFallsBackToCreatedAt(t *testing.T) {
+	m := newTestManager(t)
+	now := time.Now()
+	m.areas["used"] = &Workspace{ID: "used", Tenant: "alice", Session: "s1", CreatedAt: now.Add(-3 * time.Hour)}
+	m.areas["fresh"] = &Workspace{ID: "fresh", Tenant: "alice", Session: "s1", CreatedAt: now}
+	m.lastUse["used"] = now.Add(-4 * time.Hour)
+	// "fresh" has no lastUse entry at all.
+
+	got := m.List("alice", "")
+	if len(got) != 2 || got[0].ID != "fresh" {
+		t.Fatalf("got %+v; want fresh first", got)
 	}
 }
