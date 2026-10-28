@@ -190,6 +190,14 @@ func main() {
 			// fallback answers it with index.html, and the UI's fetch fails parsing HTML as JSON.
 			APIPrefix: "/api",
 			Title:     "GitHub",
+			// What the shelf says this is for. Declared HERE rather than in the manifest because it
+			// describes the UI, and a build with no UI should declare none.
+			Descriptions: map[string]string{
+				"en": "Repositories, workspaces, pull requests and CI runs.",
+				"zh": "仓库、工作区、合并请求与 CI 运行。",
+			},
+			// Served from this extension's own bundle, so the icon can change without a host release.
+			Icon: "/icon.svg",
 		},
 		// API routes the UI reads from. They answer from the LOCAL workspace, never api.github.com:
 		// see internal/uihandler.

@@ -62,6 +62,8 @@ github.com/easydev-org/easybus-sdk v0.9.12 h1:RVGn4rGYAXLVFOxp5vrsfMgZxqcQDltaQp
 github.com/easydev-org/easybus-sdk v0.9.12/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
 github.com/easydev-org/easybus-sdk v0.9.14 h1:4B/ddM6B+X9gmOJNPUo4ZbQHihbzbr3bM4mKom14Kh8=
 github.com/easydev-org/easybus-sdk v0.9.14/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
+github.com/easydev-org/easybus-sdk v0.9.15 h1:myYAVd2nOv4krRsFh7wePyQ+F7Yvm8eu0WResNzSQdo=
+github.com/easydev-org/easybus-sdk v0.9.15/go.mod h1:0Jx5Nxc922MVvolEg/SS5coPLO1s/H6JdLz5GQGyrio=
 github.com/elazarl/goproxy v1.7.2 h1:Y2o6urb7Eule09PjlhQRGNsqRfPmYI3KKQLFpCAV3+o=
 github.com/elazarl/goproxy v1.7.2/go.mod h1:82vkLNir0ALaW14Rc399OTTjyNREgmdL2cVoIbS6XaE=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
