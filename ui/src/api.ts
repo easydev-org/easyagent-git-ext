@@ -167,4 +167,46 @@ export const api = {
   diff: (ws: string, path?: string) =>
     get<{ diff: string }>('diff', { ws, path }).then(r => r.diff),
   log: (ws: string) => get<{ entries: LogEntry[] }>('log', { ws, limit: '80' }).then(r => r.entries),
+  // Pull requests. These read GitHub rather than the local checkout: a pull request is not on disk,
+  // and a PAGE shows the current state where a card replays what a tool already returned.
+  pull: (repo: string, number: number) => get<PullView>('pull', { repo, number: String(number) }),
+  pullFiles: (repo: string, number: number) =>
+    get<{ files: PullFile[]; count: number }>('pull/files', { repo, number: String(number) }).then(
+      r => r.files,
+    ),
+  pullDiff: (repo: string, number: number) =>
+    get<{ diff: string }>('pull/diff', { repo, number: String(number) }).then(r => r.diff),
+  pullChecks: (repo: string, number: number) =>
+    get<PullChecks>('pull/checks', { repo, number: String(number) }),
+}
+
+/** A pull request as the page shows it. */
+export interface PullView {
+  number: number
+  title: string
+  state: string
+  author: string
+  body: string
+  head: string
+  base: string
+  url: string
+  draft: boolean
+  merged: boolean
+  created: string
+}
+
+/** One changed file. `patch_truncated` distinguishes "no diff given" from "no change". */
+export interface PullFile {
+  path: string
+  status: string
+  additions: number
+  deletions: number
+  patch: string
+  patch_truncated: boolean
+}
+
+export interface PullChecks {
+  state: string
+  sha: string
+  checks: Array<{ name: string; status: string }> | null
 }

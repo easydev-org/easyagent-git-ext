@@ -91,6 +91,9 @@ func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, t
 			// A pull request IS an issue here, so the card route carries both facts and lets the UI
 			// choose which shape to draw.
 			"card": cardFor(cardTemplateItem),
+			// Only a pull request has a page. An issue would need one of its own, and offering a
+			// route that does not exist is worse than offering no link.
+			"view": issueView(repo, n, isPR, fmt.Sprintf("#%d %s", is.Number, is.Title)),
 		},
 	}, nil
 }

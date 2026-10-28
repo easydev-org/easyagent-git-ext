@@ -18,6 +18,12 @@ type PullRequest struct {
 	Merged  bool
 	// Mergeable is TRI-state on GitHub (nil while it computes), so a pointer.
 	Mergeable *bool
+	// Page-only facts. A tool reports what it needs to answer a question; the PR PAGE shows the
+	// request itself, so these exist for it — and they are cheap, already in the same response.
+	Author    string
+	Body      string
+	Draft     bool
+	CreatedAt string
 }
 
 func pullFromG(r *gogithub.PullRequest) PullRequest {
@@ -25,6 +31,8 @@ func pullFromG(r *gogithub.PullRequest) PullRequest {
 		Number: r.GetNumber(), Title: r.GetTitle(), State: r.GetState(),
 		HTMLURL: r.GetHTMLURL(), Head: r.GetHead().GetRef(), Base: r.GetBase().GetRef(),
 		Merged: r.GetMerged(), Mergeable: r.Mergeable,
+		Author: r.GetUser().GetLogin(), Body: r.GetBody(), Draft: r.GetDraft(),
+		CreatedAt: r.GetCreatedAt().Format("2006-01-02 15:04"),
 	}
 }
 

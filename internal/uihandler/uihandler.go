@@ -28,6 +28,11 @@ type Handler struct {
 	// Identity resolves the caller's bearer to a tenant. REQUIRED: without it every request is
 	// refused, because the alternative is trusting a `?tenant=` parameter.
 	Identity *IdentityResolver
+	// Pulls reads pull requests from GitHub. Optional: the workspace endpoints work without it, and
+	// a deployment with no GitHub token simply has no PR pages.
+	//
+	// This is the ONLY remote read in this package; everything else is the local checkout on purpose.
+	Pulls PullSource
 }
 
 // scope is the (tenant, session) pair that owns a workspace.
@@ -136,6 +141,12 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc(p+"status", h.status)
 	mux.HandleFunc(p+"diff", h.diff)
 	mux.HandleFunc(p+"log", h.log)
+	// Pull requests: a PAGE the reader visits to see the current state, so it reads the remote rather
+	// than replaying the snapshot a tool returned.
+	mux.HandleFunc(p+"pull", h.pull)
+	mux.HandleFunc(p+"pull/files", h.pullFiles)
+	mux.HandleFunc(p+"pull/diff", h.pullDiff)
+	mux.HandleFunc(p+"pull/checks", h.pullChecks)
 }
 
 func (h *Handler) listWorkspaces(w http.ResponseWriter, r *http.Request) {

@@ -19,6 +19,9 @@ import (
 	"github.com/easydev-org/easyagent-github-ext/internal/tools"
 	"github.com/easydev-org/easyagent-github-ext/internal/uihandler"
 	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
+	// The PR source reads GitHub for the UI's pull-request pages — the one remote read in the UI's
+	// data path. Everything else there is the local checkout.
+	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
 )
 
 //go:embed manifest.yaml
@@ -43,7 +46,7 @@ const uiBase = "/ext/github"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ws *workspace.Manager, ver, agentURL string) http.Handler {
+func uiMux(ws *workspace.Manager, ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -59,6 +62,9 @@ func uiMux(ws *workspace.Manager, ver, agentURL string) http.Handler {
 	(&uihandler.Handler{
 		Workspaces: ws,
 		Identity:   &uihandler.IdentityResolver{AgentURL: agentURL},
+		// Pull requests are the one remote read the UI makes: a page shows the CURRENT state, where a
+		// card replays the snapshot a tool returned.
+		Pulls: pulls,
 	}).Register(mux, uiBase)
 	return mux
 }
@@ -189,7 +195,25 @@ func main() {
 		// see internal/uihandler.
 		// AGENT_URL, not NATS: the UI API authenticates by asking the agent, which is the only
 		// component that can map a bearer to a tenant.
-		Handler: uiMux(wsMgr, m.Version, envOr("AGENT_URL", "http://agent.dev.svc.cluster.local")),
+		// The PR source resolves its token per request through the extension, because a token lives in
+		// configuration and configuration can change while this pod is running. Holding one here
+		// would pin whatever was set at boot.
+		Handler: uiMux(
+			wsMgr, m.Version,
+			envOr("AGENT_URL", "http://agent.dev.svc.cluster.local"),
+			&ghclient.PullSource{
+				TokenFor: func(tenant string) string {
+					if ext == nil {
+						return ""
+					}
+					s, _ := ext.GetConfig(tenant, "token", "").(string)
+					return s
+				},
+				// The handler authenticated already and put the tenant on the request context; this
+				// reads it back rather than authenticating twice.
+				TenantFrom: uihandler.TenantFromContext,
+			},
+		),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("listening", "nats", natsURL)
 			// Reap abandoned workspaces. Without this a long-lived pod fills its disk with

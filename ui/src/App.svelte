@@ -9,6 +9,7 @@
     type CardPayload,
   } from './theme.svelte'
   import ToolCard from './ToolCard.svelte'
+  import PullPage from './PullPage.svelte'
   import CodePane from './CodePane.svelte'
   import DiffPane from './DiffPane.svelte'
   import Tree from './Tree.svelte'
@@ -23,6 +24,9 @@
     // browse, but a drawing of a result. It has no session and fetches nothing: everything it shows
     // arrived in the message, which is why it still works after the workspace behind it is gone.
     | { kind: 'card'; template: string }
+    // A pull request as a PAGE. It reads GitHub, unlike everything else here: a PR is not on disk,
+    // and a page answers "what does this look like now" where a card answers "what did the tool see".
+    | { kind: 'pull'; repo: string; number: number }
     | { kind: 'tree'; ws: string; dir: string }
     | { kind: 'blob'; ws: string; path: string }
     | { kind: 'changes'; ws: string }
@@ -33,6 +37,17 @@
     // `#/card/<template>` — which renderer, chosen by the tool that produced the result.
     if (parts[0] === 'card' && parts[1]) {
       return { kind: 'card', template: decodeURIComponent(parts[1]) }
+    }
+    // `#/pull/<owner>/<name>/<number>` — a pull request page.
+    //
+    // The repository is TWO path segments, not one escaped segment: `owner/name` is a path, and
+    // escaping the slash would make it a single opaque token that no longer matches how anybody
+    // reads it.
+    if (parts[0] === 'pull' && parts[1] && parts[2] && parts[3]) {
+      const n = Number(parts[3])
+      if (Number.isFinite(n) && n > 0) {
+        return { kind: 'pull', repo: `${parts[1]}/${parts[2]}`, number: n }
+      }
     }
     if (parts[0] !== 'ws' || !parts[1]) return { kind: 'root' }
     const ws = parts[1]
@@ -77,10 +92,12 @@
     return () => mq.removeEventListener('change', on)
   })
 
-  // Only the workspace routes carry an id. A card does not: it renders what it was given, so it names
-  // no workspace at all.
+  // Only the workspace routes carry an id. A card renders what it was given and a pull request is
+  // addressed by repository, so neither names a workspace.
   const wsID = $derived(
-    route.kind === 'root' || route.kind === 'card' ? '' : route.ws,
+    route.kind === 'tree' || route.kind === 'blob' || route.kind === 'changes' || route.kind === 'log'
+      ? route.ws
+      : '',
   )
 
   function go(hash: string): void {
@@ -213,6 +230,10 @@
   {:else}
     <div class="state muted">waiting for data…</div>
   {/if}
+{:else if route.kind === 'pull'}
+  <!-- A pull request page. It fetches: a PR is not in the checkout, and the point of opening the
+       page is to see it as it is NOW rather than as it was when a tool ran. -->
+  <PullPage repo={route.repo} number={route.number} />
 {:else if route.kind === 'root'}
   {#if workspaces.length === 0}
     <div class="state">

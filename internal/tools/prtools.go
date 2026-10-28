@@ -45,6 +45,7 @@ func (t *toolset) prChecks(ctx context.Context, args map[string]any, session, te
 			// CI status is a list of named checks — the shape a card is good at, and the thing a
 			// reader wants at a glance before deciding whether to merge.
 			"card": cardFor(cardTemplatePRCheck),
+			"view": pullView(repo, n, fmt.Sprintf("%s#%d", repo, n)),
 		},
 	}, nil
 }

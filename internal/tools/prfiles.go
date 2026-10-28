@@ -55,6 +55,9 @@ func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, ten
 			// The per-file list IS the answer, so the card lets the UI read it rather than restating
 			// a count: a card that summarises a summary is worth nothing.
 			"card": cardFor(cardTemplatePRFiles),
+			// The page reads GitHub, so opening it shows the CURRENT pull request rather than this
+			// snapshot — and a workspace that expired cannot break it.
+			"view": pullView(repo, n, fmt.Sprintf("%s#%d", repo, n)),
 		},
 	}, nil
 }
@@ -95,6 +98,7 @@ func (t *toolset) prDiff(ctx context.Context, args map[string]any, session, tena
 		Data: map[string]any{
 			"number": n, "truncated": truncated,
 			"card": cardFor(cardTemplatePRDiff),
+			"view": pullView(repo, n, fmt.Sprintf("%s#%d", repo, n)),
 		},
 	}, nil
 }

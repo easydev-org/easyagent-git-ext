@@ -2,6 +2,7 @@ package tools
 
 import (
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +62,38 @@ func viewFor(wsID, route, title string) map[string]any {
 		"route": route,
 		"title": title,
 	}
+}
+
+// pullView points at a pull request's page.
+//
+// The route is `#/pull/<owner>/<name>/<number>` — the repository as TWO segments, matching how the
+// page's own router reads it and how everybody writes it. Escaping the slash would turn it into one
+// opaque token.
+//
+// A pull request has no workspace, so this cannot go through viewFor: the page reads GitHub, which
+// is the one place the UI does. It is a view rather than a card for exactly that reason — opening it
+// shows the CURRENT state, and a stale one fails visibly instead of quietly.
+func pullView(repo string, number int, title string) map[string]any {
+	parts := strings.Split(strings.Trim(repo, "/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || number <= 0 {
+		return nil
+	}
+	return map[string]any{
+		"ext":   uiExtID,
+		"route": "/pull/" + url.PathEscape(parts[0]) + "/" + url.PathEscape(parts[1]) + "/" + strconv.Itoa(number),
+		"title": title,
+	}
+}
+
+// issueView points at a page for an issue, if one exists.
+//
+// Only pull requests have one today: an issue needs a page of its own, and a link to a route that
+// would render nothing is worse than no link at all.
+func issueView(repo string, number int, isPullRequest bool, title string) map[string]any {
+	if !isPullRequest {
+		return nil
+	}
+	return pullView(repo, number, title)
 }
 
 // wsRoute is the route for one workspace view.
