@@ -167,6 +167,10 @@ func (h *Handler) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 	for _, ws := range list {
 		out = append(out, map[string]any{
 			"id": ws.ID, "repo": ws.Repo, "branch": ws.CurrentBranch(),
+			// The session is reported because the list can span them: an extension opened from its own
+			// tab has no session to narrow by, so the reader needs to know which conversation each
+			// checkout belongs to.
+			"session": ws.Session,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workspaces": out})

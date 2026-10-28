@@ -209,9 +209,22 @@ func (m *Manager) List(tenant, session string) []*Workspace {
 	defer m.mu.Unlock()
 	out := make([]*Workspace, 0, len(m.areas))
 	for _, w := range m.areas {
-		if w.Tenant == tenant && w.Session == session {
-			out = append(out, w)
+		if w.Tenant != tenant {
+			continue
 		}
+		// An EMPTY session means "all of this tenant's", not "the ones with no session".
+		//
+		// The second reading is the literal one and it is useless: nothing creates a workspace
+		// without a session, so the list was always empty. That is what an extension's own home screen
+		// asked for — it is opened from a tab, not from a conversation, so it has no session to name
+		// and showed "no workspace in this session" over data the caller could plainly see existed.
+		//
+		// The tenant is still enforced above, so this widens the view to the caller's OWN checkouts
+		// and never to somebody else's.
+		if session != "" && w.Session != session {
+			continue
+		}
+		out = append(out, w)
 	}
 	return out
 }

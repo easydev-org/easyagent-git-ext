@@ -7,6 +7,14 @@ export interface Workspace {
   id: string
   repo: string
   branch: string
+  /**
+   * Which conversation this checkout belongs to.
+   *
+   * Present because the list can span sessions: an extension opened from its own tab has no session
+   * to narrow by, so it shows every checkout the tenant owns and the reader needs to see where each
+   * one came from.
+   */
+  session?: string
 }
 
 export interface TreeEntry {

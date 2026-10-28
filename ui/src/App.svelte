@@ -256,6 +256,10 @@
         <button class="pick" onclick={() => go(`#/ws/${w.id}/tree/`)}>
           <span class="mono t-meta muted">{w.branch || 'repo'}</span>
           <span class="name">{w.repo || w.id}</span>
+          <!-- The session is shown because this list can span them: the extension's own home has no
+               conversation to narrow by, so it lists every checkout the tenant owns and the reader
+               needs to know which chat each one came from. -->
+          {#if w.session}<span class="mono t-micro muted">{w.session}</span>{/if}
         </button>
       {/each}
     </div>

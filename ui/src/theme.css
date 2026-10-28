@@ -112,16 +112,19 @@ html.card-mode body {
 body {
   background: var(--background);
   color: var(--foreground);
-  /* The host's own stack; the webfonts are not duplicated here, so an iframe with no font assets
-     still matches the host's metrics instead of falling back to Times. */
-  font-family: 'NotoSansSC', 'NotoColorEmoji', ui-sans-serif, system-ui, sans-serif;
+  /* The host's own stack, copied rather than duplicated as webfonts: an iframe with no font assets
+     must still match the host's metrics instead of falling back to Times. The host also uses
+     `system-ui` first (it carried 15 MB of webfonts it did not need), so the two stay aligned. */
+  font-family: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans CJK SC', 'Noto Color Emoji', ui-sans-serif, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   overscroll-behavior: none;
 }
 
 .mono {
-  font-family: 'NotoSansMono', 'NotoSansSC', ui-monospace, monospace;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono',
+    'Noto Sans Mono CJK SC', monospace;
 }
 
 /* Type scale, matching the host's text-micro / text-meta / text-body utilities. */
