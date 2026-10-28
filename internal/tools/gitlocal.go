@@ -92,6 +92,9 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 			// The id exists only as a result here — no argument and no manifest can name it — so the
 			// view route is built by the code that just created it.
 			"view": viewFor(w.ID, wsRoute(w.ID, "/tree/"), w.Repo),
+			// The compact summary the host draws on the tool card. Sibling of `view`, not a field
+			// inside it: the card says what was cloned, the button opens the browser.
+			"card": cardFor(w.ID),
 		},
 	}, nil
 }

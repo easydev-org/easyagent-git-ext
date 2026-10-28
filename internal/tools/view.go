@@ -33,6 +33,29 @@ func viewFor(wsID, route, title string) map[string]any {
 	}
 }
 
+// cardFor builds the `card` entry: a URL where this extension renders a COMPACT summary of the call.
+//
+// Separate from `viewFor`, and a sibling of it rather than a field inside it, because they answer
+// different questions and either can exist without the other: a clone has both (a summary card, a
+// button opening the tree), a delete has only a card. Folding them together would make "show a card
+// but no button" impossible to express.
+//
+// The host renders this in an IFRAME. That is deliberate: the host's stylesheet is generated at build
+// time from its own sources, so markup returned from here would carry class names it has never seen
+// and render unstyled. A frame also lets this UI reuse the components it already has.
+//
+// Returns nil when there is no workspace to describe, so a caller with nothing to show emits no card
+// rather than a frame pointing at a route that will 404.
+func cardFor(wsID string) map[string]any {
+	if wsID == "" {
+		return nil
+	}
+	return map[string]any{
+		"ext":   uiExtID,
+		"route": "/card/" + url.PathEscape(wsID),
+	}
+}
+
 // wsRoute is the route for one workspace view.
 //
 // The id is escaped as a path SEGMENT: a workspace id is generated and safe today, but a route built

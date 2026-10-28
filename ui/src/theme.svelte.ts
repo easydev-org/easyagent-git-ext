@@ -32,3 +32,31 @@ window.addEventListener('message', (ev: MessageEvent) => {
 export function announceReady(): void {
   window.parent?.postMessage({ type: `${MSG_KEY}:ready` }, '*')
 }
+
+const HEIGHT_KEY = 'easyagent:card-height'
+
+/**
+ * Report this document's height to the host, so a card frame is exactly as tall as its content.
+ *
+ * Only the HOST can size a frame it owns, and only this document knows how tall the content is — so
+ * the number has to travel. A ResizeObserver rather than a one-off measurement because a card
+ * renders in stages (data arrives, then an image decodes), and a height reported once would clip
+ * whatever came after.
+ *
+ * Called only on the `card` route: the same UI is also mounted as a full page, where the host is not
+ * sizing anything and a stray message would be noise.
+ */
+export function reportCardHeight(): void {
+  if (typeof ResizeObserver === 'undefined') return
+  let last = 0
+  const send = (): void => {
+    const h = Math.ceil(document.body.getBoundingClientRect().height)
+    // Only on change: the observer fires for width too, and re-sending an identical height would
+    // make the host re-render for nothing.
+    if (h === last || h <= 0) return
+    last = h
+    window.parent?.postMessage({ type: HEIGHT_KEY, height: h }, '*')
+  }
+  new ResizeObserver(send).observe(document.body)
+  send()
+}

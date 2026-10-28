@@ -43,3 +43,37 @@ func TestViewForCarriesExtAndRoute(t *testing.T) {
 		t.Errorf("route = %v", v["route"])
 	}
 }
+
+// The card is what the host embeds in a tool card; without an id there is nothing to describe, and a
+// frame pointing at a 404 route is worse than no card.
+func TestCardForNeedsAWorkspace(t *testing.T) {
+	if c := cardFor(""); c != nil {
+		t.Fatalf("an empty workspace id produced a card: %#v", c)
+	}
+}
+
+func TestCardForPointsAtTheCardRoute(t *testing.T) {
+	c := cardFor("w1")
+	if c == nil {
+		t.Fatal("no card")
+	}
+	if c["ext"] != "github" {
+		t.Errorf("ext = %v, want github", c["ext"])
+	}
+	// A separate route from the workspace views: the card is a summary, not the browser.
+	if c["route"] != "/card/w1" {
+		t.Errorf("route = %v, want /card/w1", c["route"])
+	}
+}
+
+// The route is a path SEGMENT, so the id is escaped. Generated ids are safe today; a route built by
+// concatenation is one format change away from resolving somewhere else.
+func TestCardForEscapesTheWorkspaceID(t *testing.T) {
+	c := cardFor("a/b")
+	if c == nil {
+		t.Fatal("no card")
+	}
+	if c["route"] != "/card/a%2Fb" {
+		t.Errorf("route = %v, want the id escaped as one segment", c["route"])
+	}
+}

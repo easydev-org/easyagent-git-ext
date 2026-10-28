@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api, type Change, type LogEntry, type TreeEntry, type Workspace } from './api'
-  import { announceReady } from './theme.svelte'
+  import { announceReady, reportCardHeight } from './theme.svelte'
   import CodePane from './CodePane.svelte'
   import DiffPane from './DiffPane.svelte'
   import Tree from './Tree.svelte'
@@ -10,6 +10,10 @@
   // route for it — which is why the UI can be plain embedded files.
   type Route =
     | { kind: 'root' }
+    // A compact summary of one tool CALL, for the host's tool card. Separate from the workspace
+    // routes above: it answers "what did this call do", not "show me this repository", and it is
+    // read-only — nothing here navigates, because the frame it renders is a few hundred pixels tall.
+    | { kind: 'card'; ws: string }
     | { kind: 'tree'; ws: string; dir: string }
     | { kind: 'blob'; ws: string; path: string }
     | { kind: 'changes'; ws: string }
@@ -17,6 +21,8 @@
 
   function parse(hash: string): Route {
     const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
+    // `#/card/<workspace>` — the call's own summary.
+    if (parts[0] === 'card' && parts[1]) return { kind: 'card', ws: parts[1] }
     if (parts[0] !== 'ws' || !parts[1]) return { kind: 'root' }
     const ws = parts[1]
     if (parts[2] === 'blob' && parts[3]) return { kind: 'blob', ws, path: parts.slice(3).join('/') }
@@ -27,6 +33,10 @@
 
   let route = $state<Route>(parse(location.hash))
   let workspaces = $state<Workspace[]>([])
+  // State for the `card` route only; unused elsewhere, which is cheaper than a discriminated state
+  // object for two fields.
+  let cardWs = $state<Workspace | null>(null)
+  let cardBranch = $state('')
   let entries = $state<TreeEntry[]>([])
   let changes = $state<Change[]>([])
   let branch = $state('')
@@ -67,6 +77,16 @@
     void load(r)
   })
 
+  // A card frame is sized by the HOST, using a height only this document knows. Started once per
+  // mount, and only on the card route — on the other routes this UI is a full page and the host is
+  // sizing nothing.
+  let heightReporting = false
+  $effect(() => {
+    if (route.kind !== 'card' || heightReporting) return
+    heightReporting = true
+    reportCardHeight()
+  })
+
   async function load(r: Route): Promise<void> {
     error = ''
     loading = true
@@ -85,6 +105,15 @@
         tab = 'code'
         entries = await api.tree(r.ws, r.dir)
         file = null
+      } else if (r.kind === 'card') {
+        // A card shows the same three facts the workspace picker does, plus the branch. One request,
+        // because a card that needs several round trips is a card that renders late inside a frame
+        // the host has already sized.
+        const list = await api.workspaces()
+        cardWs = list.find(w => w.id === r.ws) ?? null
+        if (cardWs) {
+          cardBranch = await api.status(r.ws).then(s => s.branch).catch(() => cardWs!.branch)
+        }
       } else if (r.kind === 'blob') {
         tab = 'code'
         file = await api.file(r.ws, r.path)
@@ -117,6 +146,29 @@
 
 {#if error}
   <div class="state error">{error}</div>
+{:else if route.kind === 'card'}
+  <!-- The compact summary an agent tool card embeds.
+
+       Deliberately NOT the full browser: it is rendered in a frame a few hundred pixels tall, so it
+       says what this workspace IS and offers the one action worth taking from here. Everything else
+       belongs in the panel the "Open" button already provides. -->
+  <div class="card-body">
+    {#if !cardWs}
+      <div class="state muted">This workspace is gone — it may have expired.</div>
+    {:else}
+      <div class="card-head">
+        <span class="repo">{cardWs.repo || cardWs.id}</span>
+        {#if cardBranch}<span class="pill mono">{cardBranch}</span>{/if}
+      </div>
+      <dl class="kv">
+        <dt>workspace</dt>
+        <dd class="mono">{cardWs.id}</dd>
+        <dt>branch</dt>
+        <dd class="mono">{cardBranch || cardWs.branch || '—'}</dd>
+      </dl>
+      <a class="open" href={`#/ws/${cardWs.id}/tree/`}>Browse files →</a>
+    {/if}
+  </div>
 {:else if route.kind === 'root'}
   {#if workspaces.length === 0}
     <div class="state">
@@ -282,6 +334,51 @@
   .state {
     padding: var(--sp-xl);
     text-align: center;
+  }
+  /* The card is embedded in the host's tool card: it must read as a summary, not as a page. Tighter
+     spacing and no page-level padding, because the frame is already inset by the host. */
+  .card-body {
+    padding: var(--sp-sm) var(--sp-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-sm);
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    min-width: 0;
+  }
+  .card-head .repo {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px var(--sp-sm);
+    margin: 0;
+  }
+  .kv dt {
+    color: var(--muted-foreground);
+    font-size: var(--text-micro, 11px);
+  }
+  .kv dd {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-body .open {
+    align-self: flex-start;
+    color: var(--primary);
+    font-size: var(--text-meta, 12px);
+    text-decoration: none;
+  }
+  .card-body .open:hover {
+    text-decoration: underline;
   }
   .error {
     color: var(--destructive);
