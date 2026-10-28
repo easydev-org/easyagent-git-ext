@@ -90,6 +90,25 @@ body {
   margin: 0;
 }
 
+/**
+ * CARD MODE: the document is as tall as its CONTENT, not as tall as the frame.
+ *
+ * `height: 100%` is right for the full-page UI, which fills the tab. In a card it fights the host:
+ * the frame starts at a placeholder height, `body` stretches to fill it, the host measures that
+ * stretched height, and the reader sees a pale block that shrinks once the real content arrives —
+ * with a scrollbar appearing in between.
+ *
+ * The class is set on <html> by index.html from the same `#/card/...` route check the app uses, so
+ * it is applied before first paint and there is no unstyled frame.
+ */
+html.card-mode,
+html.card-mode body {
+  height: auto;
+  min-height: 0;
+  /* The host sizes the frame; this document must not also offer its own scrollbar. */
+  overflow: hidden;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

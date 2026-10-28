@@ -18,6 +18,17 @@
           : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
         document.documentElement.dataset.theme = m
       })()
+      // Mark card mode BEFORE first paint.
+      //
+      // The same document serves the full-page UI and the compact card the host embeds; only the
+      // route tells them apart. Doing it here rather than in the app means the layout is right on
+      // the first frame — otherwise the card renders at page height and visibly snaps to its real
+      // size once the script runs.
+      ;(() => {
+        if (location.hash.startsWith('#/card/')) {
+          document.documentElement.classList.add('card-mode')
+        }
+      })()
     </script>
   </head>
   <body>
