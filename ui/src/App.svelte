@@ -13,7 +13,7 @@
     // A compact summary of one tool CALL, for the host's tool card. Separate from the workspace
     // routes above: it answers "what did this call do", not "show me this repository", and it is
     // read-only — nothing here navigates, because the frame it renders is a few hundred pixels tall.
-    | { kind: 'card'; ws: string }
+    | { kind: 'card'; ws: string; repo: string }
     | { kind: 'tree'; ws: string; dir: string }
     | { kind: 'blob'; ws: string; path: string }
     | { kind: 'changes'; ws: string }
@@ -22,7 +22,13 @@
   function parse(hash: string): Route {
     const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
     // `#/card/<workspace>` — the call's own summary.
-    if (parts[0] === 'card' && parts[1]) return { kind: 'card', ws: parts[1] }
+    //
+    // The repository travels in the ROUTE, not looked up: the input section must show what the call
+    // was asked for, and the arguments are gone once the call is over. The workspace still names
+    // itself, but `repo` is only known at call time.
+    if (parts[0] === 'card' && parts[1]) {
+      return { kind: 'card', ws: parts[1], repo: decodeURIComponent(parts[2] ?? '') }
+    }
     if (parts[0] !== 'ws' || !parts[1]) return { kind: 'root' }
     const ws = parts[1]
     if (parts[2] === 'blob' && parts[3]) return { kind: 'blob', ws, path: parts.slice(3).join('/') }
@@ -37,6 +43,9 @@
   // object for two fields.
   let cardWs = $state<Workspace | null>(null)
   let cardBranch = $state('')
+  // The argument the call was made with, carried in the route: the input section must show it even
+  // when the workspace lookup fails.
+  let cardRepo = $state('')
   let entries = $state<TreeEntry[]>([])
   let changes = $state<Change[]>([])
   let branch = $state('')
@@ -109,6 +118,7 @@
         // A card shows the same three facts the workspace picker does, plus the branch. One request,
         // because a card that needs several round trips is a card that renders late inside a frame
         // the host has already sized.
+        cardRepo = r.repo
         const list = await api.workspaces()
         cardWs = list.find(w => w.id === r.ws) ?? null
         if (cardWs) {
@@ -150,24 +160,39 @@
   <!-- The compact summary an agent tool card embeds.
 
        Deliberately NOT the full browser: it is rendered in a frame a few hundred pixels tall, so it
-       says what this workspace IS and offers the one action worth taking from here. Everything else
-       belongs in the panel the "Open" button already provides. -->
+       says what this workspace IS. Everything else belongs in the view the action opens.
+
+       Two sections, matching the host's own tool cards: what the call was ASKED for, then what came
+       BACK. The action sits at the end, where a reader arrives after reading both — a link at the top
+       competes with the summary for attention before there is anything to act on. -->
   <div class="card-body">
-    {#if !cardWs}
-      <div class="state muted">This workspace is gone — it may have expired.</div>
-    {:else}
-      <div class="card-head">
-        <span class="repo">{cardWs.repo || cardWs.id}</span>
-        {#if cardBranch}<span class="pill mono">{cardBranch}</span>{/if}
-      </div>
+    <!-- INPUT: the arguments this call was made with. -->
+    <section class="sec">
+      <h3 class="sec-title">Input</h3>
       <dl class="kv">
-        <dt>workspace</dt>
-        <dd class="mono">{cardWs.id}</dd>
-        <dt>branch</dt>
-        <dd class="mono">{cardBranch || cardWs.branch || '—'}</dd>
+        <dt>repo</dt>
+        <dd class="mono">{cardWs?.repo || cardRepo || '—'}</dd>
       </dl>
-      <!-- A BUTTON, not a link: navigating here would open the browser inside this frame, which is a
-           few hundred pixels tall. The host owns where views go. -->
+    </section>
+
+    <!-- RESULT: what the call produced. -->
+    <section class="sec">
+      <h3 class="sec-title">Result</h3>
+      {#if !cardWs}
+        <div class="state muted">This workspace is gone — it may have expired.</div>
+      {:else}
+        <dl class="kv">
+          <dt>workspace</dt>
+          <dd class="mono">{cardWs.id}</dd>
+          <dt>branch</dt>
+          <dd class="mono">{cardBranch || cardWs.branch || '—'}</dd>
+        </dl>
+      {/if}
+    </section>
+
+    <!-- The action, last. A BUTTON, not a link: navigating here would open the browser inside this
+         frame. The host owns where views go. -->
+    {#if cardWs}
       <button
         type="button"
         class="open"
@@ -362,6 +387,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* Sections stack, each with a small caption. The caption is what makes the card legible at a
+     glance: without it the rows are an undifferentiated list and the reader has to work out which
+     half is the request and which is the answer. */
+  .sec {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sec-title {
+    margin: 0;
+    font-size: var(--text-micro, 10px);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
   }
   .kv {
     display: grid;

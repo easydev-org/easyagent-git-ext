@@ -46,13 +46,20 @@ func viewFor(wsID, route, title string) map[string]any {
 //
 // Returns nil when there is no workspace to describe, so a caller with nothing to show emits no card
 // rather than a frame pointing at a route that will 404.
-func cardFor(wsID string) map[string]any {
+func cardFor(wsID, repo string) map[string]any {
 	if wsID == "" {
 		return nil
 	}
+	route := "/card/" + url.PathEscape(wsID)
+	// The repository travels in the route because the card's INPUT section has to show what the call
+	// was asked for, and by the time the card renders the arguments are only a memory. The workspace
+	// names itself; `repo` does not.
+	if repo != "" {
+		route += "/" + url.PathEscape(repo)
+	}
 	return map[string]any{
 		"ext":   uiExtID,
-		"route": "/card/" + url.PathEscape(wsID),
+		"route": route,
 	}
 }
 

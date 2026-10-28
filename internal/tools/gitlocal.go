@@ -94,7 +94,7 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 			"view": viewFor(w.ID, wsRoute(w.ID, "/tree/"), w.Repo),
 			// The compact summary the host draws on the tool card. Sibling of `view`, not a field
 			// inside it: the card says what was cloned, the button opens the browser.
-			"card": cardFor(w.ID),
+			"card": cardFor(w.ID, w.Repo),
 		},
 	}, nil
 }
