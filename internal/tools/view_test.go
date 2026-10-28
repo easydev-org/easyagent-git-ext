@@ -44,48 +44,30 @@ func TestViewForCarriesExtAndRoute(t *testing.T) {
 	}
 }
 
-// The card is what the host embeds in a tool card; without an id there is nothing to describe, and a
-// frame pointing at a 404 route is worse than no card.
-func TestCardForNeedsAWorkspace(t *testing.T) {
-	if c := cardFor("", "a/b"); c != nil {
-		t.Fatalf("an empty workspace id produced a card: %#v", c)
-	}
-}
-
-func TestCardForPointsAtTheCardRoute(t *testing.T) {
-	c := cardFor("w1", "org/repo")
+// A card names a RENDERER, not a route. There is nowhere to navigate to and nothing to fetch: the
+// host hands the frame the tool result, and the UI draws it. That is why a template carries no
+// workspace id — the card does not depend on one.
+func TestCardForNamesATemplate(t *testing.T) {
+	c := cardFor(cardTemplateClone)
 	if c == nil {
 		t.Fatal("no card")
 	}
 	if c["ext"] != "github" {
 		t.Errorf("ext = %v, want github", c["ext"])
 	}
-	// A separate route from the workspace views: the card is a summary, not the browser. The repo
-	// rides along because the card's INPUT section must show the argument, and it is only known now.
-	if c["route"] != "/card/w1/org%2Frepo" {
-		t.Errorf("route = %v, want /card/w1/org%%2Frepo", c["route"])
+	if c["template"] != cardTemplateClone {
+		t.Errorf("template = %v, want %v", c["template"], cardTemplateClone)
+	}
+	// No route: a card that pointed at one would be a page again, and would inherit every way a page
+	// can fail — the workspace expiring being the one that made this design wrong.
+	if _, ok := c["route"]; ok {
+		t.Errorf("a card must not carry a route: %#v", c)
 	}
 }
 
-// The route is a path SEGMENT, so the id is escaped. Generated ids are safe today; a route built by
-// concatenation is one format change away from resolving somewhere else.
-func TestCardForEscapesTheWorkspaceID(t *testing.T) {
-	c := cardFor("a/b", "")
-	if c == nil {
-		t.Fatal("no card")
-	}
-	if c["route"] != "/card/a%2Fb" {
-		t.Errorf("route = %v, want the id escaped as one segment", c["route"])
-	}
-}
-
-// No repo means no segment: a trailing slash would make the route look like a prefix of something.
-func TestCardForOmitsAnEmptyRepo(t *testing.T) {
-	c := cardFor("w1", "")
-	if c == nil {
-		t.Fatal("no card")
-	}
-	if c["route"] != "/card/w1" {
-		t.Errorf("route = %v, want /card/w1", c["route"])
+// An unnamed template is not a card, so a caller with nothing to say emits nothing.
+func TestCardForNeedsATemplate(t *testing.T) {
+	if c := cardFor(""); c != nil {
+		t.Fatalf("an empty template produced a card: %#v", c)
 	}
 }

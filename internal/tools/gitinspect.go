@@ -29,6 +29,7 @@ func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, ten
 	if strings.TrimSpace(d) == "" {
 		return extension.ToolResultData{Content: "no changes", Data: map[string]any{
 			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+			"card": cardFor(cardTemplateDiff),
 		}}, nil
 	}
 
@@ -49,6 +50,7 @@ func (t *toolset) gitDiff(ctx context.Context, args map[string]any, session, ten
 		Data: map[string]any{
 			"truncated": truncated,
 			"view":      viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+			"card":      cardFor(cardTemplateDiff),
 		},
 	}, nil
 }

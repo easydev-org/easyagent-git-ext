@@ -63,6 +63,46 @@ export function reportCardHeight(): void {
 
 const OPEN_VIEW_KEY = 'easyagent:open-view'
 
+const CARD_READY_KEY = 'easyagent:card-ready'
+const CARD_DATA_KEY = 'easyagent:card-data'
+
+/** What the host hands a card: the call's three fields, and nothing else. */
+export interface CardPayload {
+  tool: string
+  input: Record<string, unknown>
+  data: Record<string, unknown>
+  output: string
+  error: string
+}
+
+/**
+ * Ask the host for this card's data, and call `apply` when it arrives.
+ *
+ * A card is a pure render, so it has nothing to fetch and no scope to resolve: the host already holds
+ * the tool result and hands it over. This is why a card still works after the workspace it describes
+ * has expired — it was never reading the workspace.
+ *
+ * Returns a function that stops listening.
+ */
+export function receiveCardData(apply: (p: CardPayload) => void): () => void {
+  const onMessage = (ev: MessageEvent): void => {
+    const d = ev.data as { type?: string } & Partial<CardPayload> | null
+    if (d?.type !== CARD_DATA_KEY) return
+    apply({
+      tool: typeof d.tool === 'string' ? d.tool : '',
+      input: (d.input as Record<string, unknown>) ?? {},
+      data: (d.data as Record<string, unknown>) ?? {},
+      output: typeof d.output === 'string' ? d.output : '',
+      error: typeof d.error === 'string' ? d.error : '',
+    })
+  }
+  window.addEventListener('message', onMessage)
+  // Announce AFTER the listener is registered. The other order races: the host can answer before
+  // this side is listening, and the card would sit empty forever.
+  window.parent?.postMessage({ type: CARD_READY_KEY }, '*')
+  return () => window.removeEventListener('message', onMessage)
+}
+
 /**
  * Ask the HOST to open one of this extension's views.
  *

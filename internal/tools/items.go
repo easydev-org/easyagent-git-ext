@@ -86,7 +86,12 @@ func (t *toolset) issueShow(ctx context.Context, args map[string]any, session, t
 	}
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"issue": is, "is_pull_request": isPR, "comments": len(comments)},
+		Data: map[string]any{
+			"issue": is, "is_pull_request": isPR, "comments": len(comments),
+			// A pull request IS an issue here, so the card route carries both facts and lets the UI
+			// choose which shape to draw.
+			"card": cardFor(cardTemplateItem),
+		},
 	}, nil
 }
 

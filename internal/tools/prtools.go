@@ -40,7 +40,12 @@ func (t *toolset) prChecks(ctx context.Context, args map[string]any, session, te
 	}
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"state": state, "checks": ch, "sha": ch.HeadSHA},
+		Data: map[string]any{
+			"state": state, "checks": ch, "sha": ch.HeadSHA,
+			// CI status is a list of named checks — the shape a card is good at, and the thing a
+			// reader wants at a glance before deciding whether to merge.
+			"card": cardFor(cardTemplatePRCheck),
+		},
 	}, nil
 }
 

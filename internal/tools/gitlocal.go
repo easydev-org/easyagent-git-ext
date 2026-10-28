@@ -94,7 +94,7 @@ func (t *toolset) gitClone(ctx context.Context, args map[string]any, session, te
 			"view": viewFor(w.ID, wsRoute(w.ID, "/tree/"), w.Repo),
 			// The compact summary the host draws on the tool card. Sibling of `view`, not a field
 			// inside it: the card says what was cloned, the button opens the browser.
-			"card": cardFor(w.ID, w.Repo),
+			"card": cardFor(cardTemplateClone),
 		},
 	}, nil
 }
@@ -144,6 +144,7 @@ func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, t
 			"files": files,
 			// Still a view: the Changes pane is where a caller checks, and an empty one says so.
 			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+			"card": cardFor(cardTemplateStatus),
 		}}, nil
 	}
 	var b strings.Builder
@@ -160,6 +161,7 @@ func (t *toolset) gitStatus(ctx context.Context, args map[string]any, session, t
 		Data: map[string]any{
 			"files": files, "count": len(files),
 			"view": viewFor(w.ID, wsRoute(w.ID, "/changes"), "Changes"),
+			"card": cardFor(cardTemplateStatus),
 		},
 	}, nil
 }
@@ -213,6 +215,7 @@ func (t *toolset) gitRead(ctx context.Context, args map[string]any, session, ten
 			"path": path, "bytes": len(content),
 			// A read names one file, so the view is that file rather than the tree.
 			"view": viewFor(w.ID, wsRoute(w.ID, "/blob/"+escapePath(path)), path),
+			"card": cardFor(cardTemplateRead),
 		},
 	}, nil
 }
@@ -271,6 +274,7 @@ func (t *toolset) gitLog(ctx context.Context, args map[string]any, session, tena
 		Data: map[string]any{
 			"log": entries, "count": len(entries),
 			"view": viewFor(w.ID, wsRoute(w.ID, "/log"), "History"),
+			"card": cardFor(cardTemplateLog),
 		},
 	}, nil
 }

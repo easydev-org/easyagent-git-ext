@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { api, type Change, type LogEntry, type TreeEntry, type Workspace } from './api'
-  import { announceReady, reportCardHeight, requestOpenView } from './theme.svelte'
+  import {
+    announceReady,
+    receiveCardData,
+    reportCardHeight,
+    requestOpenView,
+    type CardPayload,
+  } from './theme.svelte'
+  import ToolCard from './ToolCard.svelte'
   import CodePane from './CodePane.svelte'
   import DiffPane from './DiffPane.svelte'
   import Tree from './Tree.svelte'
@@ -10,10 +17,12 @@
   // route for it — which is why the UI can be plain embedded files.
   type Route =
     | { kind: 'root' }
-    // A compact summary of one tool CALL, for the host's tool card. Separate from the workspace
-    // routes above: it answers "what did this call do", not "show me this repository", and it is
-    // read-only — nothing here navigates, because the frame it renders is a few hundred pixels tall.
-    | { kind: 'card'; ws: string; repo: string }
+    // A tool CARD: a render of one finished call, from data the host hands over.
+    //
+    // Separate from the workspace routes because it is a different kind of thing — not a place to
+    // browse, but a drawing of a result. It has no session and fetches nothing: everything it shows
+    // arrived in the message, which is why it still works after the workspace behind it is gone.
+    | { kind: 'card'; template: string }
     | { kind: 'tree'; ws: string; dir: string }
     | { kind: 'blob'; ws: string; path: string }
     | { kind: 'changes'; ws: string }
@@ -21,13 +30,9 @@
 
   function parse(hash: string): Route {
     const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
-    // `#/card/<workspace>` — the call's own summary.
-    //
-    // The repository travels in the ROUTE, not looked up: the input section must show what the call
-    // was asked for, and the arguments are gone once the call is over. The workspace still names
-    // itself, but `repo` is only known at call time.
+    // `#/card/<template>` — which renderer, chosen by the tool that produced the result.
     if (parts[0] === 'card' && parts[1]) {
-      return { kind: 'card', ws: parts[1], repo: decodeURIComponent(parts[2] ?? '') }
+      return { kind: 'card', template: decodeURIComponent(parts[1]) }
     }
     if (parts[0] !== 'ws' || !parts[1]) return { kind: 'root' }
     const ws = parts[1]
@@ -39,13 +44,12 @@
 
   let route = $state<Route>(parse(location.hash))
   let workspaces = $state<Workspace[]>([])
-  // State for the `card` route only; unused elsewhere, which is cheaper than a discriminated state
-  // object for two fields.
-  let cardWs = $state<Workspace | null>(null)
-  let cardBranch = $state('')
-  // The argument the call was made with, carried in the route: the input section must show it even
-  // when the workspace lookup fails.
-  let cardRepo = $state('')
+  // The call a card renders, handed over by the host. Null until it arrives: a card fetches nothing,
+  // so this is the only way it can have anything to draw.
+  let cardPayload = $state<CardPayload | null>(null)
+  // Where the card's action should lead, if anywhere. Built from the payload, so it points at the
+  // workspace THIS CALL produced — not at whatever happens to exist now.
+  let openTarget = $state<{ route: string; title: string; label: string } | null>(null)
   let entries = $state<TreeEntry[]>([])
   let changes = $state<Change[]>([])
   let branch = $state('')
@@ -115,15 +119,8 @@
         entries = await api.tree(r.ws, r.dir)
         file = null
       } else if (r.kind === 'card') {
-        // A card shows the same three facts the workspace picker does, plus the branch. One request,
-        // because a card that needs several round trips is a card that renders late inside a frame
-        // the host has already sized.
-        cardRepo = r.repo
-        const list = await api.workspaces()
-        cardWs = list.find(w => w.id === r.ws) ?? null
-        if (cardWs) {
-          cardBranch = await api.status(r.ws).then(s => s.branch).catch(() => cardWs!.branch)
-        }
+        // Nothing to load: the card renders what the host hands over. A fetch here would be a second
+        // read of something the tool already returned — slower, and capable of disagreeing with it.
       } else if (r.kind === 'blob') {
         tab = 'code'
         file = await api.file(r.ws, r.path)
@@ -152,56 +149,53 @@
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   })
+
+  // A card is a render, so it waits for the host to hand it the call. Announcing readiness happens
+  // inside receiveCardData, AFTER the listener is registered — the other order races and leaves the
+  // card empty forever.
+  $effect(() => {
+    if (route.kind !== 'card') return
+    return receiveCardData(p => {
+      cardPayload = p
+      // The action is derived from the SAME payload, so it points at the workspace this call made.
+      // Building it here rather than fetching means it costs nothing and cannot describe a different
+      // workspace from the one the card is showing.
+      const ws = typeof p.data['workspace'] === 'string' ? (p.data['workspace'] as string) : ''
+      const repo = typeof p.data['repo'] === 'string' ? (p.data['repo'] as string) : ''
+      openTarget =
+        ws === ''
+          ? null
+          : {
+              route: `/ws/${encodeURIComponent(ws)}/tree/`,
+              title: repo || ws,
+              label: 'Browse files',
+            }
+    })
+  })
 </script>
 
 {#if error}
   <div class="state error">{error}</div>
 {:else if route.kind === 'card'}
-  <!-- The compact summary an agent tool card embeds.
+  <!-- A tool card: the render of one finished call.
 
-       Deliberately NOT the full browser: it is rendered in a frame a few hundred pixels tall, so it
-       says what this workspace IS. Everything else belongs in the view the action opens.
-
-       Two sections, matching the host's own tool cards: what the call was ASKED for, then what came
-       BACK. The action sits at the end, where a reader arrives after reading both — a link at the top
-       competes with the summary for attention before there is anything to act on. -->
-  <div class="card-body">
-    <!-- INPUT: the arguments this call was made with. -->
-    <section class="sec">
-      <h3 class="sec-title">Input</h3>
-      <dl class="kv">
-        <dt>repo</dt>
-        <dd class="mono">{cardWs?.repo || cardRepo || '—'}</dd>
-      </dl>
-    </section>
-
-    <!-- RESULT: what the call produced. -->
-    <section class="sec">
-      <h3 class="sec-title">Result</h3>
-      {#if !cardWs}
-        <div class="state muted">This workspace is gone — it may have expired.</div>
-      {:else}
-        <dl class="kv">
-          <dt>workspace</dt>
-          <dd class="mono">{cardWs.id}</dd>
-          <dt>branch</dt>
-          <dd class="mono">{cardBranch || cardWs.branch || '—'}</dd>
-        </dl>
-      {/if}
-    </section>
-
-    <!-- The action, last. A BUTTON, not a link: navigating here would open the browser inside this
-         frame. The host owns where views go. -->
-    {#if cardWs}
-      <button
-        type="button"
-        class="open"
-        onclick={() => requestOpenView(`/ws/${cardWs!.id}/tree/`, cardWs!.repo || cardWs!.id)}
-      >
-        Browse files →
-      </button>
+       Everything shown here comes from the message the host handed over, so there is nothing to wait
+       for and nothing that can have expired. A card whose workspace is gone still shows its files,
+       its diff, its status — because those are what the tool RETURNED, not a live view of it. -->
+  {#if cardPayload}
+    <ToolCard payload={cardPayload} />
+    <!-- The one action worth offering, and only when the tool declared somewhere to go. A view CAN
+         fail later (a workspace expires); that failure belongs to the click, not to this render. -->
+    {#if openTarget}
+      <div class="card-action">
+        <button type="button" class="open" onclick={() => requestOpenView(openTarget!.route, openTarget!.title)}>
+          {openTarget.label} →
+        </button>
+      </div>
     {/if}
-  </div>
+  {:else}
+    <div class="state muted">waiting for data…</div>
+  {/if}
 {:else if route.kind === 'root'}
   {#if workspaces.length === 0}
     <div class="state">
@@ -368,60 +362,12 @@
     padding: var(--sp-xl);
     text-align: center;
   }
-  /* The card is embedded in the host's tool card: it must read as a summary, not as a page. Tighter
-     spacing and no page-level padding, because the frame is already inset by the host. */
-  .card-body {
-    padding: var(--sp-sm) var(--sp-md);
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-sm);
+  /* The action sits after the card's own sections: a reader arrives here after reading what the call
+     asked for and what it returned, which is the point at which going somewhere makes sense. */
+  .card-action {
+    padding: 0 var(--sp-md) var(--sp-sm);
   }
-  .card-head {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-sm);
-    min-width: 0;
-  }
-  .card-head .repo {
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* Sections stack, each with a small caption. The caption is what makes the card legible at a
-     glance: without it the rows are an undifferentiated list and the reader has to work out which
-     half is the request and which is the answer. */
-  .sec {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .sec-title {
-    margin: 0;
-    font-size: var(--text-micro, 10px);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--muted-foreground);
-  }
-  .kv {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px var(--sp-sm);
-    margin: 0;
-  }
-  .kv dt {
-    color: var(--muted-foreground);
-    font-size: var(--text-micro, 11px);
-  }
-  .kv dd {
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .card-body .open {
-    align-self: flex-start;
+  .card-action .open {
     color: var(--primary);
     font-size: var(--text-meta, 12px);
     text-decoration: none;
@@ -432,7 +378,7 @@
     font-family: inherit;
     cursor: pointer;
   }
-  .card-body .open:hover {
+  .card-action .open:hover {
     text-decoration: underline;
   }
   .error {

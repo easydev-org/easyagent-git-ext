@@ -48,7 +48,12 @@ func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, ten
 	fmt.Fprintf(&b, "\n%d files, +%d -%d", len(files), adds, dels)
 	return extension.ToolResultData{
 		Content: b.String(),
-		Data:    map[string]any{"files": files, "count": len(files), "additions": adds, "deletions": dels},
+		Data: map[string]any{
+			"files": files, "count": len(files), "additions": adds, "deletions": dels,
+			// The per-file list IS the answer, so the card lets the UI read it rather than restating
+			// a count: a card that summarises a summary is worth nothing.
+			"card": cardFor(cardTemplatePRFiles),
+		},
 	}, nil
 }
 
@@ -85,6 +90,9 @@ func (t *toolset) prDiff(ctx context.Context, args map[string]any, session, tena
 	}
 	return extension.ToolResultData{
 		Content: out,
-		Data:    map[string]any{"number": n, "truncated": truncated},
+		Data: map[string]any{
+			"number": n, "truncated": truncated,
+			"card": cardFor(cardTemplatePRDiff),
+		},
 	}, nil
 }
