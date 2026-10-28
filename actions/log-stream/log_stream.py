@@ -234,8 +234,24 @@ def main():
         return subprocess.call(cmd)
 
     # Forward the child's output to this step's log as well, so the Actions log is unchanged.
+    #
+    # text=True decodes as UTF-8 and RAISES on a byte sequence that is not valid
+    # UTF-8, and that exception killed the step it was supposed to be streaming.
+    # Measured, not theorised: ubuntu's bake died at two minutes with
+    #
+    #   File ".../log_stream.py", line 244, in main
+    #     for line in proc.stdout:
+    #   UnicodeDecodeError: utf-8 codec can't decode byte 0xe2 in position 1408
+    #   ##[error]Process completed with exit code 1.
+    #
+    # The bake itself was fine - the guest was still drawing its kernel messages. A
+    # serial console writes bytes, not text: escape sequences, and any line the
+    # terminal cut in half mid-character, arrive however they arrive.
+    #
+    # errors='replace' turns the offending byte into a replacement character and keeps
+    # going. Losing one glyph in a progress log is nothing next to losing the run.
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1)
+                            text=True, bufsize=1, errors='replace')
 
     def on_term(signum, frame):
         proc.terminate()
