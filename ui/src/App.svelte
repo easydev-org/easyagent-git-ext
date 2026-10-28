@@ -77,7 +77,11 @@
     return () => mq.removeEventListener('change', on)
   })
 
-  const wsID = $derived(route.kind === 'root' ? '' : route.ws)
+  // Only the workspace routes carry an id. A card does not: it renders what it was given, so it names
+  // no workspace at all.
+  const wsID = $derived(
+    route.kind === 'root' || route.kind === 'card' ? '' : route.ws,
+  )
 
   function go(hash: string): void {
     location.hash = hash
