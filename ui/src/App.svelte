@@ -161,21 +161,34 @@
     if (route.kind !== 'card') return
     return receiveCardData(p => {
       cardPayload = p
-      // The action is derived from the SAME payload, so it points at the workspace this call made.
-      // Building it here rather than fetching means it costs nothing and cannot describe a different
-      // workspace from the one the card is showing.
-      const ws = typeof p.data['workspace'] === 'string' ? (p.data['workspace'] as string) : ''
-      const repo = typeof p.data['repo'] === 'string' ? (p.data['repo'] as string) : ''
+      // The action comes from `data.view`, which the TOOL decides.
+      //
+      // Deriving it here from a workspace id was wrong twice: only the clone tool returns one, so
+      // every other card lost its action — a read could not open its own file, a diff could not open
+      // the changes pane. The tool already knows WHERE its result lives; the card's job is only to
+      // offer it.
+      const v = p.data['view'] as { route?: unknown; title?: unknown } | undefined
+      const viewRoute = v && typeof v.route === 'string' ? v.route : ''
       openTarget =
-        ws === ''
+        viewRoute === ''
           ? null
           : {
-              route: `/ws/${encodeURIComponent(ws)}/tree/`,
-              title: repo || ws,
-              label: 'Browse files',
+              route: viewRoute,
+              title: typeof v?.title === 'string' ? v.title : '',
+              // Label what it opens: a read opens a FILE, a diff opens the changes pane. "Browse
+              // files" would be wrong for three of the five.
+              label: openLabel(viewRoute),
             }
     })
   })
+
+  /** The verb for a view route, from the pane it opens. */
+  function openLabel(route: string): string {
+    if (route.includes('/blob/')) return 'Open file'
+    if (route.includes('/changes')) return 'Open changes'
+    if (route.includes('/log')) return 'Open history'
+    return 'Browse files'
+  }
 </script>
 
 {#if error}
