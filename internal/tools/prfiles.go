@@ -49,6 +49,8 @@ func (t *toolset) prFiles(ctx context.Context, args map[string]any, session, ten
 	return extension.ToolResultData{
 		Content: b.String(),
 		Data: map[string]any{
+			// The struct slice is converted to maps by the registry wrapper (see withNormalisedData),
+			// so every tool gets the same treatment instead of each one remembering.
 			"files": files, "count": len(files), "additions": adds, "deletions": dels,
 			// The per-file list IS the answer, so the card lets the UI read it rather than restating
 			// a count: a card that summarises a summary is worth nothing.

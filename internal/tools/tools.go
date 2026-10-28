@@ -106,7 +106,7 @@ func RequireMap() map[string][]string {
 // Registry builds the gh-* handler map.
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
-	return map[string]Handler{
+	raw := map[string]Handler{
 		// LOCAL git. Everything here happens inside a workspace directory; none of it talks to
 		// GitHub. A workspace comes from git-ws-clone and is identified by its id.
 		"git-ws-clone":     t.gitClone,
@@ -174,6 +174,21 @@ func Registry(d Deps) map[string]Handler {
 		"gh-issue-comments": t.issueComments,
 		"gh-issue-close":    t.issueClose,
 	}
+
+	// Every handler's result is normalised ON THE WAY OUT, at the one place they all pass through.
+	//
+	// The transport carries `Data` as a protobuf Struct, which holds scalars, lists and maps — not Go
+	// structs. A struct in the payload does not fail loudly: the whole `data` field arrives as null,
+	// so a client reading a field off it draws an empty card and nothing anywhere reports a problem.
+	// Testing every tool is how this was found: gh-pr-diff returned data, gh-pr-files returned null,
+	// and the only difference was a []FileChange.
+	//
+	// Done here rather than per handler so a NEW tool cannot forget it.
+	out := make(map[string]Handler, len(raw))
+	for name, h := range raw {
+		out[name] = withNormalisedData(h)
+	}
+	return out
 }
 
 // toolset carries the dependencies through every handler.
