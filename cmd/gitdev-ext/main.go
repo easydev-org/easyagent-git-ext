@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
@@ -94,7 +95,21 @@ func mirrorForge(ext *extension.Extension) uihandler.MirrorForgeFunc {
 			return nil, fmt.Errorf("the `servers` config is malformed: %w", err)
 		}
 		cfg := forgeconfig.Config{Servers: servers}
+		// THE PANEL PASSES `owner/name`, NOT A URL. HostOf parses a remote address, so it answers ""
+		// for a bare path — and a "" host matches no server, so every panel request reported "not
+		// configured" against a configuration that was in fact correct.
+		//
+		// The panel has no address to parse because it does not choose a host: the mirror is the one
+		// this deployment is configured for. So the FIRST configured server is the one, and a bare
+		// path is what selects it.
 		host := forgeconfig.HostOf(repo)
+		if host == "" {
+			if len(cfg.Servers) == 0 {
+				return nil, fmt.Errorf("no `servers` entry is configured for the mirror")
+			}
+			return forge.New(cfg.Servers[0].APIBase(), cfg.Servers[0].Token,
+				"http://"+cfg.Servers[0].Host+"/"+strings.TrimPrefix(repo, "/")+".git")
+		}
 		srv, _ := cfg.ServerForHost(host)
 		base := srv.APIBase()
 		if base == "" {
