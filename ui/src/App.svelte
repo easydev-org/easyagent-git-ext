@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { api, type Change, type LogEntry, type TreeEntry, type Workspace } from './api'
+  import { api, type FileBody, type TreeEntry } from './api'
   import {
     announceReady,
     receiveCardData,
@@ -11,149 +11,93 @@
   import ToolCard from './ToolCard.svelte'
   import PullPage from './PullPage.svelte'
   import CodePane from './CodePane.svelte'
-  import DiffPane from './DiffPane.svelte'
   import Tree from './Tree.svelte'
 
-  // Routing is hash-based: the host deep-links with `#/ws/<id>/blob/<path>`, and the server needs no
-  // route for it — which is why the UI can be plain embedded files.
+  // Routing is hash-based: the host deep-links, and the server needs no route for it — which is why
+  // the UI can be plain embedded files.
+  //
+  //   #/card/<template>            a finished tool call, rendered from data the host hands over
+  //   #/pull/<owner>/<name>/<n>    a pull request on the upstream
+  //   #/files/<owner>/<name>       the MIRROR's files, optionally with ?branch=&dir=
   type Route =
     | { kind: 'root' }
-    // A tool CARD: a render of one finished call, from data the host hands over.
-    //
-    // Separate from the workspace routes because it is a different kind of thing — not a place to
-    // browse, but a drawing of a result. It has no session and fetches nothing: everything it shows
-    // arrived in the message, which is why it still works after the workspace behind it is gone.
+    // A tool CARD: a drawing of one result, from data the host hands over. It fetches nothing, which
+    // is why it still works long after the call finished.
     | { kind: 'card'; template: string }
-    // A pull request as a PAGE. It reads GitHub, unlike everything else here: a PR is not on disk,
-    // and a page answers "what does this look like now" where a card answers "what did the tool see".
+    // A pull request as a PAGE. It reads GitHub: a PR is not in the mirror, and the point of opening
+    // the page is to see it NOW rather than as it was when a tool ran.
     | { kind: 'pull'; repo: string; number: number }
-    | { kind: 'tree'; ws: string; dir: string }
-    | { kind: 'blob'; ws: string; path: string }
-    | { kind: 'changes'; ws: string }
-    | { kind: 'log'; ws: string }
+    | { kind: 'files'; repo: string; branch: string; dir: string }
 
   function parse(hash: string): Route {
     const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
-    // `#/card/<template>` — which renderer, chosen by the tool that produced the result.
     if (parts[0] === 'card' && parts[1]) {
       return { kind: 'card', template: decodeURIComponent(parts[1]) }
     }
-    // `#/pull/<owner>/<name>/<number>` — a pull request page.
-    //
     // The repository is TWO path segments, not one escaped segment: `owner/name` is a path, and
-    // escaping the slash would make it a single opaque token that no longer matches how anybody
-    // reads it.
+    // escaping the slash would make it a single opaque token nobody reads that way.
     if (parts[0] === 'pull' && parts[1] && parts[2] && parts[3]) {
       const n = Number(parts[3])
       if (Number.isFinite(n) && n > 0) {
         return { kind: 'pull', repo: `${parts[1]}/${parts[2]}`, number: n }
       }
     }
-    if (parts[0] !== 'ws' || !parts[1]) return { kind: 'root' }
-    const ws = parts[1]
-    if (parts[2] === 'blob' && parts[3]) return { kind: 'blob', ws, path: parts.slice(3).join('/') }
-    if (parts[2] === 'changes') return { kind: 'changes', ws }
-    if (parts[2] === 'log') return { kind: 'log', ws }
-    return { kind: 'tree', ws, dir: parts.slice(3).join('/') }
+    if (parts[0] === 'files' && parts[1] && parts[2]) {
+      const q = new URLSearchParams(location.hash.split('?')[1] ?? '')
+      return {
+        kind: 'files',
+        repo: `${parts[1]}/${parts[2]}`,
+        // The branch and directory ride in the query rather than the path: a branch name contains
+        // slashes (`feat/x`), which a path segment cannot carry without changing what the route
+        // means.
+        branch: q.get('branch') ?? '',
+        dir: q.get('dir') ?? '',
+      }
+    }
+    return { kind: 'root' }
   }
 
   let route = $state<Route>(parse(location.hash))
-  let workspaces = $state<Workspace[]>([])
-  // The call a card renders, handed over by the host. Null until it arrives: a card fetches nothing,
-  // so this is the only way it can have anything to draw.
-  let cardPayload = $state<CardPayload | null>(null)
-  // Where the card's action should lead, if anywhere. Built from the payload, so it points at the
-  // workspace THIS CALL produced — not at whatever happens to exist now.
-  let openTarget = $state<{ route: string; title: string; label: string } | null>(null)
+
   let entries = $state<TreeEntry[]>([])
-  let changes = $state<Change[]>([])
+  let branches = $state<string[]>([])
   let branch = $state('')
-  let commits = $state<LogEntry[]>([])
-  let file = $state<{ path: string; size: number; binary?: boolean; content?: string } | null>(null)
-  let diff = $state('')
+  let file = $state<FileBody | null>(null)
   let error = $state('')
   let loading = $state(false)
-  let tab = $state<'code' | 'changes' | 'log'>('code')
-
-  // Narrow = the panel is a phone-sized column, where a 240px tree beside a file leaves neither
-  // enough room. On a narrow screen the tree and the file are SEPARATE PAGES: picking a file shows
-  // it full width with a back arrow, which is what a phone file browser does.
-  //
-  // 720px rather than the host's 640px because this UI also runs inside a SIDE PANEL on a desktop,
-  // where the available width is the panel's, not the window's.
   let narrow = $state(false)
-  onMount(() => {
-    const mq = window.matchMedia('(max-width: 720px)')
-    const on = (): void => {
-      narrow = mq.matches
-    }
-    on()
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  })
-
-  // Only the workspace routes carry an id. A card renders what it was given and a pull request is
-  // addressed by repository, so neither names a workspace.
-  const wsID = $derived(
-    route.kind === 'tree' || route.kind === 'blob' || route.kind === 'changes' || route.kind === 'log'
-      ? route.ws
-      : '',
-  )
+  let cardPayload = $state<CardPayload | null>(null)
+  // Where a card offers to go, when the tool that produced it named a view.
+  let openTarget = $state<{ route: string; label: string; title: string } | null>(null)
 
   function go(hash: string): void {
     location.hash = hash
   }
 
-  // Load is keyed on the ROUTE, not on individual clicks: a deep link, a back button and a click all
-  // take the same path, so there is one place where "what should be on screen" is decided.
-  $effect(() => {
-    const r = route
-    void load(r)
-  })
-
-  // A card frame is sized by the HOST, using a height only this document knows. Started once per
-  // mount, and only on the card route — on the other routes this UI is a full page and the host is
-  // sizing nothing.
-  let heightReporting = false
-  $effect(() => {
-    if (route.kind !== 'card' || heightReporting) return
-    heightReporting = true
-    reportCardHeight()
-  })
+  /** The path of the file currently open, or '' — a nested path keeps its slashes. */
+  let openPath = $state('')
 
   async function load(r: Route): Promise<void> {
     error = ''
     loading = true
     try {
-      if (r.kind === 'root') {
-        workspaces = await api.workspaces()
-        // One repository is the common case: go straight to it rather than making the user click
-        // through a list of one.
-        if (workspaces.length === 1) {
-          go(`#/ws/${workspaces[0]!.id}/tree/`)
-          return
+      if (r.kind === 'files') {
+        const info = await api.repoInfo(r.repo)
+        branches = info.branches ?? []
+        // The branch defaults to the repository's own default, not to "main": not every repository
+        // uses that name, and guessing would open an empty page with no explanation.
+        branch = r.branch || info.defaultBranch || branches[0] || ''
+        if (openPath !== '') {
+          file = await api.file(r.repo, branch, openPath)
+        } else {
+          entries = await api.tree(r.repo, branch, r.dir)
+          file = null
         }
-        return
-      }
-      if (r.kind === 'tree') {
-        tab = 'code'
-        entries = await api.tree(r.ws, r.dir)
+      } else {
+        // A card renders what the host handed over; a pull request page fetches for itself. Neither
+        // needs anything from here.
+        entries = []
         file = null
-      } else if (r.kind === 'card') {
-        // Nothing to load: the card renders what the host hands over. A fetch here would be a second
-        // read of something the tool already returned — slower, and capable of disagreeing with it.
-      } else if (r.kind === 'blob') {
-        tab = 'code'
-        file = await api.file(r.ws, r.path)
-      } else if (r.kind === 'changes') {
-        tab = 'changes'
-        const s = await api.status(r.ws)
-        changes = s.changes ?? []
-        branch = s.branch
-        diff = await api.diff(r.ws)
-      } else if (r.kind === 'log') {
-        tab = 'log'
-        commits = await api.log(r.ws)
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
@@ -163,63 +107,80 @@
   }
 
   onMount(() => {
-    announceReady()
-    const onHash = (): void => {
-      route = parse(location.hash)
+    const onHash = () => {
+      const next = parse(location.hash)
+      // Opening a file from the tree keeps the branch; leaving the page clears it.
+      if (next.kind !== 'files') openPath = ''
+      route = next
+      void load(next)
     }
+    onHash()
     window.addEventListener('hashchange', onHash)
+
+    const mq = matchMedia('(max-width: 720px)')
+    narrow = mq.matches
+    mq.addEventListener('change', (e) => {
+      narrow = (e as MediaQueryListEvent).matches
+    })
+
+    announceReady()
     return () => window.removeEventListener('hashchange', onHash)
   })
 
-  // A card is a render, so it waits for the host to hand it the call. Announcing readiness happens
-  // inside receiveCardData, AFTER the listener is registered — the other order races and leaves the
-  // card empty forever.
+  // The card frame is sized by the HOST, using a height only this document knows.
   $effect(() => {
-    if (route.kind !== 'card') return
-    return receiveCardData(p => {
-      cardPayload = p
-      // The action comes from `data.view`, which the TOOL decides.
-      //
-      // Deriving it here from a workspace id was wrong twice: only the clone tool returns one, so
-      // every other card lost its action — a read could not open its own file, a diff could not open
-      // the changes pane. The tool already knows WHERE its result lives; the card's job is only to
-      // offer it.
-      const v = p.data['view'] as { route?: unknown; title?: unknown } | undefined
-      const viewRoute = v && typeof v.route === 'string' ? v.route : ''
-      openTarget =
-        viewRoute === ''
-          ? null
-          : {
-              route: viewRoute,
-              title: typeof v?.title === 'string' ? v.title : '',
-              // Label what it opens: a read opens a FILE, a diff opens the changes pane. "Browse
-              // files" would be wrong for three of the five.
-              label: openLabel(viewRoute),
-            }
-    })
+    void cardPayload
+    void route
+    reportCardHeight()
   })
 
-  /** The verb for a view route, from the pane it opens. */
-  function openLabel(route: string): string {
-    if (route.includes('/blob/')) return 'Open file'
-    if (route.includes('/changes')) return 'Open changes'
-    if (route.includes('/log')) return 'Open history'
-    return 'Browse files'
+  receiveCardData((p) => {
+    cardPayload = p
+    error = ''
+    // A tool may say where its result lives. The route is the tool's to build — only it knows which
+    // repository the result was about.
+    const v = (p as { view?: { route?: string; title?: string } }).view
+    openTarget = v?.route
+      ? { route: v.route, label: 'Open', title: v.title ?? 'Open' }
+      : null
+  })
+
+  /** Open one file, keeping the branch and the directory behind it. */
+  function openFile(path: string): void {
+    openPath = path
+    if (route.kind === 'files') void load(route)
+  }
+
+  function backToTree(): void {
+    openPath = ''
+    if (route.kind === 'files') void load(route)
+  }
+
+  /** Move to a directory, keeping the branch. Observed via the hash so the URL stays shareable. */
+  function openDir(dir: string): void {
+    openPath = ''
+    if (route.kind !== 'files') return
+    go(
+      `#/files/${route.repo}?branch=${encodeURIComponent(branch)}&dir=${encodeURIComponent(dir)}`,
+    )
+  }
+
+  function pickBranch(b: string): void {
+    branch = b
+    openPath = ''
+    if (route.kind === 'files') {
+      go(`#/files/${route.repo}?branch=${encodeURIComponent(b)}&dir=${encodeURIComponent(route.dir)}`)
+    }
   }
 </script>
 
 {#if error}
   <div class="state error">{error}</div>
 {:else if route.kind === 'card'}
-  <!-- A tool card: the render of one finished call.
-
-       Everything shown here comes from the message the host handed over, so there is nothing to wait
-       for and nothing that can have expired. A card whose workspace is gone still shows its files,
-       its diff, its status — because those are what the tool RETURNED, not a live view of it. -->
+  <!-- A tool card: the render of one finished call. Everything shown comes from the message the host
+       handed over, so there is nothing to wait for and nothing that can have expired. -->
   {#if cardPayload}
     <ToolCard payload={cardPayload} />
-    <!-- The one action worth offering, and only when the tool declared somewhere to go. A view CAN
-         fail later (a workspace expires); that failure belongs to the click, not to this render. -->
     {#if openTarget}
       <div class="card-action">
         <button type="button" class="open" onclick={() => requestOpenView(openTarget!.route, openTarget!.title)}>
@@ -231,95 +192,47 @@
     <div class="state muted">waiting for data…</div>
   {/if}
 {:else if route.kind === 'pull'}
-  <!-- A pull request page. It fetches: a PR is not in the checkout, and the point of opening the
-       page is to see it as it is NOW rather than as it was when a tool ran. -->
   <PullPage repo={route.repo} number={route.number} />
-{:else if route.kind === 'root'}
-  {#if workspaces.length === 0}
-    <div class="state">
-      No workspace in this session.
-      <div class="muted t-meta">
-        Ask the agent to run <span class="mono">git-ws-clone</span> — it returns the id this panel
-        opens.
-      </div>
-      <!-- Workspaces live in memory, so a restart clears them. An old tool card still LOOKS
-           clickable after that, so say it here rather than leaving the reader to guess why a
-           workspace they used a minute ago is gone. -->
-      <div class="muted t-meta">
-        An empty list can also mean the service restarted: workspaces are kept in memory and do not
-        survive it. Cloning again is the fix, not a retry.
-      </div>
-    </div>
-  {:else}
-    <div class="picker">
-      {#each workspaces as w (w.id)}
-        <button class="pick" onclick={() => go(`#/ws/${w.id}/tree/`)}>
-          <span class="mono t-meta muted">{w.branch || 'repo'}</span>
-          <span class="name">{w.repo || w.id}</span>
-          <!-- The session is shown because this list can span them: the extension's own home has no
-               conversation to narrow by, so it lists every checkout the tenant owns and the reader
-               needs to know which chat each one came from. -->
-          {#if w.session}<span class="mono t-micro muted">{w.session}</span>{/if}
-        </button>
-      {/each}
-    </div>
-  {/if}
-{:else}
+{:else if route.kind === 'files'}
   <div class="layout">
-    <!-- NARROW: one page at a time. The tree is the first page; opening a file replaces it and the
-         back arrow returns. Showing both side by side on a phone leaves ~120px for each.
-         WIDE: the tree is a fixed rail and the content fills the rest, which is how this reads
-         best inside the host's side panel. -->
-    <!-- On a narrow screen the tree belongs to the TREE PAGE only. Changes and History are their own
-         pages with their own tabs; leaving the rail visible there halves the width for content that
-         does not need a file list. -->
-    {#if !narrow || route.kind === 'tree'}
+    <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a rail
+         and the content fills the rest, which is how this reads best in the host's side panel. -->
+    {#if !narrow || openPath === ''}
       <aside>
+        {#if branches.length > 1}
+          <select class="branch" value={branch} onchange={(e) => pickBranch(e.currentTarget.value)}>
+            {#each branches as b (b)}
+              <option value={b}>{b}</option>
+            {/each}
+          </select>
+        {/if}
         <Tree
           {entries}
-          dir={route.kind === 'tree' ? route.dir : ''}
-          ws={wsID}
-          activePath={route.kind === 'blob' ? route.path : ''}
-          {go}
+          dir={route.dir}
+          ws={route.repo}
+          activePath={openPath}
+          onopen={openFile}
+          ondir={openDir}
         />
       </aside>
     {/if}
-
-    <!-- The tree page's own content would be an empty "Select a file." panel beside the rail, so it
-         is not rendered on a narrow screen — the tree IS that page. -->
-    {#if !(narrow && route.kind === 'tree')}
-    <main>
-      <nav class="tabs">
-        <button class:active={tab === 'code'} onclick={() => go(`#/ws/${wsID}/tree/`)}>Code</button>
-        <button class:active={tab === 'changes'} onclick={() => go(`#/ws/${wsID}/changes`)}>
-          Changes{#if changes.length}<span class="pill">{changes.length}</span>{/if}
-        </button>
-        <button class:active={tab === 'log'} onclick={() => go(`#/ws/${wsID}/log`)}>History</button>
-      </nav>
-
-      <div class="body">
+    {#if !(narrow && openPath === '')}
+      <main>
         {#if loading}
           <div class="state muted">Loading…</div>
-        {:else if tab === 'code'}
-          <!-- On a narrow screen the file is its own page, so it needs a way back to the list. -->
-          <CodePane {file} onback={narrow && route.kind === 'blob' ? () => go(`#/ws/${wsID}/tree/`) : null} />
-        {:else if tab === 'changes'}
-          <DiffPane {changes} {branch} {diff} {go} ws={wsID} />
         {:else}
-          <div class="log">
-            {#each commits as c (c.Hash)}
-              <div class="commit">
-                <span class="mono t-meta muted">{(c.Hash ?? '').slice(0, 7)}</span>
-                <span class="msg">{(c.Message ?? '').split('\n')[0]}</span>
-              </div>
-            {:else}
-              <div class="state muted">No commits.</div>
-            {/each}
-          </div>
+          <CodePane {file} onback={narrow && openPath !== '' ? backToTree : null} />
         {/if}
-      </div>
-    </main>
+      </main>
     {/if}
+  </div>
+{:else}
+  <div class="state">
+    Nothing selected.
+    <div class="muted t-meta">
+      Open a repository with <span class="mono">#/files/&lt;owner&gt;/&lt;name&gt;</span>, or run a
+      tool — its result opens here.
+    </div>
   </div>
 {/if}
 

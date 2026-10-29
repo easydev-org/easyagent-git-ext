@@ -17,6 +17,8 @@ import (
 
 	"github.com/easydev-org/easyagent-gitdev-ext/internal/tools"
 	"github.com/easydev-org/easyagent-gitdev-ext/internal/uihandler"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/forge"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/forgeconfig"
 	// The PR source reads GitHub for the UI's pull-request pages — the one remote read in the UI's
 	// data path. Everything else the panel used to show came from a local checkout, which this
 	// extension no longer keeps.
@@ -45,7 +47,7 @@ const uiBase = "/ext/gitdev"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
+func uiMux(ver, agentURL string, pulls uihandler.PullSource, forgeFor uihandler.MirrorForgeFunc) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -63,11 +65,47 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 		// Pull requests are the one remote read the UI makes: a page shows the CURRENT state, where a
 		// card replays the snapshot a tool returned.
 		Pulls: pulls,
+		// The MIRROR's pages. Same shape as Pulls: a function resolved per request, because the
+		// token and the server list live in configuration and can change while this pod runs.
+		Forge: forgeFor,
 	}).Register(mux, uiBase)
 	return mux
 }
 
+/**
+ * mirrorForge builds the function the panel uses to read the MIRROR.
+ *
+ * THE TENANT ARGUMENTS ARE IN DIFFERENT ORDERS, and getting it wrong would be invisible: the panel's
+ * callback takes (session, tenant, repo) while Extension.GetConfig takes (tenant, name, session). A
+ * swap would still return a config value — the wrong tenant's — so the mix-up is written out here
+ * rather than left to a call site to remember.
+ *
+ * A missing server entry falls through to New with no token, which reads a PUBLIC repository
+ * anonymously. That is a legitimate case, so it is not treated as a failure here.
+ */
+func mirrorForge(ext *extension.Extension) uihandler.MirrorForgeFunc {
+	return func(ctx context.Context, session, tenant, repo string) (*forge.Client, error) {
+		if ext == nil {
+			return nil, fmt.Errorf("the extension is not ready")
+		}
+		raw, _ := ext.GetConfig(tenant, "servers", session).(string)
+		servers, err := forgeconfig.ParseServers(raw)
+		if err != nil {
+			return nil, fmt.Errorf("the `servers` config is malformed: %w", err)
+		}
+		cfg := forgeconfig.Config{Servers: servers}
+		host := forgeconfig.HostOf(repo)
+		srv, _ := cfg.ServerForHost(host)
+		base := srv.APIBase()
+		if base == "" {
+			return nil, fmt.Errorf("%s is not configured as a forge host (set `kind` in the `servers` config)", host)
+		}
+		return forge.New(base, srv.Token, repo)
+	}
+}
+
 func main() {
+
 	log := slog.Default().With("svc", "gitdev-ext")
 
 	natsURL := envOr("NATS_URL", "nats://127.0.0.1:4222")
@@ -201,6 +239,7 @@ func main() {
 				// reads it back rather than authenticating twice.
 				TenantFrom: uihandler.TenantFromContext,
 			},
+			mirrorForge(ext),
 		),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("listening", "nats", natsURL)

@@ -1,12 +1,14 @@
-// Package uihandler serves the browser panel's pull-request data.
+// Package uihandler serves the browser panel's data: the MIRROR's files and the UPSTREAM's pull
+// requests.
 //
-// WHAT IS LEFT OF IT: the pull-request endpoints. Everything else — the file tree, diffs, logs, the
-// workspace picker — read a LOCAL CHECKOUT that this extension no longer keeps. Repository content
-// now lives on the forge and is read there (see the gitea extension), so those endpoints had no data
-// source and were removed with the workspace they read.
+// TWO SOURCES, ONE PANEL, because they are two halves of one job. The mirror is where a change is
+// made, so its files are what a reader wants while writing one; the pull request is where the change
+// is reviewed, so that is what they want afterwards. A panel that showed only one of them would
+// send the reader to a second extension mid-task.
 //
-// What remains is genuinely GitHub-side: a pull request, its files, its diff and its CI status exist
-// only on the remote, and fetching them here is not a second copy of anything.
+// NOTHING HERE WRITES. Browsing and reviewing are reads; every change goes through a tool, where the
+// permission model already lives. A page that could merge would need its own permission story and
+// does not have one.
 package uihandler
 
 import (
@@ -15,6 +17,8 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/forge"
 )
 
 // Handler answers the UI's JSON requests.
@@ -25,7 +29,16 @@ type Handler struct {
 	// Pulls reads pull requests from GitHub. Optional: a deployment without a GitHub token simply
 	// has no PR pages, rather than failing at call time.
 	Pulls PullSource
+	// Forge builds a client for one MIRROR repository in the caller's scope. Optional: a deployment
+	// with no mirror configured has no file-browsing pages.
+	//
+	// A FUNCTION rather than a client because the token and the repository come from extension
+	// CONFIG, which can change while this process runs, and because the client is per-tenant.
+	Forge MirrorForgeFunc
 }
+
+// MirrorForgeFunc builds a forge client for one repository in one caller's scope.
+type MirrorForgeFunc func(ctx context.Context, session, tenant, repo string) (*forge.Client, error)
 
 // who resolves the caller's tenant, or an error the handler must turn into 401.
 //
@@ -63,6 +76,16 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc(p+"pull/files", h.pullFiles)
 	mux.HandleFunc(p+"pull/diff", h.pullDiff)
 	mux.HandleFunc(p+"pull/checks", h.pullChecks)
+
+	// The MIRROR's own pages: browse the repository a change is being made in.
+	//
+	// Registered here rather than in a separate extension because the panel is one place: a reader
+	// writing a change looks at a file, and a reader reviewing one looks at a pull request, and they
+	// are the same person a minute apart.
+	mux.HandleFunc(p+"repo", h.repo)
+	mux.HandleFunc(p+"tree", h.tree)
+	mux.HandleFunc(p+"file", h.file)
+	mux.HandleFunc(p+"refs", h.refs)
 }
 
 // tenantKey carries the resolved tenant through a request's context, so a PullSource — which takes a

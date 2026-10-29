@@ -105,7 +105,7 @@ func (t *toolset) branchCreate(ctx context.Context, args map[string]any, session
 				Content: fmt.Sprintf("%s already existed at %s (reusing)", branch, short(existingSHA)),
 				Data: map[string]any{
 					"branch": branch, "from": from, "existed": true, "commit": existingSHA,
-					"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+					"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 				},
 			}, nil
 		case "reset":
@@ -147,7 +147,7 @@ func (t *toolset) branchCreate(ctx context.Context, args map[string]any, session
 		Content: fmt.Sprintf("%s created from %s at %s", branch, srcDesc, short(commit)),
 		Data: map[string]any{
 			"branch": branch, "from": from, "existed": exists, "commit": commit,
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
 }
@@ -206,7 +206,7 @@ func (t *toolset) filePatch(ctx context.Context, args map[string]any, session, t
 		Content: b.String(),
 		Data: map[string]any{
 			"commit": sha, "branch": branch, "changes": rows, "count": len(plan),
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
 }
@@ -236,7 +236,7 @@ func (t *toolset) fileRead(ctx context.Context, args map[string]any, session, te
 		Content: numberLines(f.Content),
 		Data: map[string]any{
 			"path": f.Path, "branch": branch, "content": f.Content, "size": f.Size,
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch+"/"+path, f.Path),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, path), f.Path),
 		},
 	}, nil
 }
@@ -273,7 +273,7 @@ func (t *toolset) fileList(ctx context.Context, args map[string]any, session, te
 		Content: strings.TrimRight(b.String(), "\n"),
 		Data: map[string]any{
 			"dir": dir, "branch": branch, "entries": rows, "count": len(rows),
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
 }
@@ -323,7 +323,7 @@ func (t *toolset) syncUpstream(ctx context.Context, args map[string]any, session
 		Content: msg,
 		Data: map[string]any{
 			"branch": branch, "moved": moved, "before": local, "after": up, "upstream": upstream,
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
 }
@@ -367,7 +367,7 @@ func (t *toolset) pushBranch(ctx context.Context, args map[string]any, session, 
 		Content: fmt.Sprintf("pushed %s -> %s (%s)", branch, dest, short(sha)),
 		Data: map[string]any{
 			"branch": branch, "to": dest, "commit": sha, "upstream": upstream,
-			"view": mirrorView(cl.Owner, cl.Repo, "files/"+branch, cl.Owner+"/"+cl.Repo+" @ "+branch),
+			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
 }

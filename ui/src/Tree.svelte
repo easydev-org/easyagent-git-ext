@@ -6,13 +6,17 @@
     dir,
     ws,
     activePath,
-    go,
+    onopen,
+    ondir,
   }: {
     entries: TreeEntry[]
     dir: string
     ws: string
     activePath: string
-    go: (hash: string) => void
+    /** Open one file. */
+    onopen: (path: string) => void
+    /** Move to a directory, '' being the root. */
+    ondir: (dir: string) => void
   } = $props()
 
   const segments = $derived(dir.split('/').filter(Boolean))
@@ -25,15 +29,15 @@
 <!-- Breadcrumbs are also the way back up: a ".." row alone makes a deep path hard to leave one
      level at a time. -->
 <nav class="crumb">
-  <button onclick={() => go(`#/ws/${ws}/tree/`)}>repo</button>
+  <button onclick={() => ondir('')}>{ws.split('/').pop() ?? ws}</button>
   {#each segments as seg, i (i)}
     <span class="muted">/</span>
-    <button onclick={() => go(`#/ws/${ws}/tree/${upTo(i)}`)}>{seg}</button>
+    <button onclick={() => ondir(upTo(i))}>{seg}</button>
   {/each}
 </nav>
 
 {#if dir}
-  <button class="row" onclick={() => go(`#/ws/${ws}/tree/${segments.slice(0, -1).join('/')}`)}>
+  <button class="row" onclick={() => ondir(segments.slice(0, -1).join('/'))}>
     <span class="kind muted mono">..</span>
   </button>
 {/if}
@@ -44,7 +48,7 @@
     class="row"
     class:active={e.path === activePath}
     title={e.path}
-    onclick={() => go(e.dir ? `#/ws/${ws}/tree/${e.path}` : `#/ws/${ws}/blob/${e.path}`)}
+    onclick={() => (e.dir ? ondir(e.path) : onopen(e.path))}
   >
     <span class="kind mono muted">{e.dir ? 'dir' : 'file'}</span>
     <span class="name">{name}</span>

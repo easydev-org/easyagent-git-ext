@@ -166,15 +166,14 @@ async function get<T>(path: string, params: Record<string, string | undefined> =
 }
 
 export const api = {
-  workspaces: () => get<{ workspaces: Workspace[] }>('workspaces').then(r => r.workspaces),
-  tree: (ws: string, dir: string) =>
-    get<{ entries: TreeEntry[] }>('tree', { ws, dir }).then(r => r.entries),
-  file: (ws: string, path: string) => get<FileBody>('file', { ws, path }),
-  status: (ws: string) =>
-    get<{ branch: string; changes: Change[] }>('status', { ws }),
-  diff: (ws: string, path?: string) =>
-    get<{ diff: string }>('diff', { ws, path }).then(r => r.diff),
-  log: (ws: string) => get<{ entries: LogEntry[] }>('log', { ws, limit: '80' }).then(r => r.entries),
+  // THE MIRROR. These read the forge, not a local checkout: there is no checkout any more, and the
+  // mirror is where a change is made, so it is what a reader wants to see while making one.
+  tree: (repo: string, branch: string, dir: string) =>
+    get<{ entries: TreeEntry[] }>('tree', { repo, branch, dir }).then(r => r.entries),
+  file: (repo: string, branch: string, path: string) =>
+    get<FileBody>('file', { repo, branch, path }),
+  repoInfo: (repo: string) =>
+    get<{ repo: string; branches: string[]; defaultBranch: string; tags: string[] }>('repo', { repo }),
   // Pull requests. These read GitHub rather than the local checkout: a pull request is not on disk,
   // and a PAGE shows the current state where a card replays what a tool already returned.
   pull: (repo: string, number: number) => get<PullView>('pull', { repo, number: String(number) }),
