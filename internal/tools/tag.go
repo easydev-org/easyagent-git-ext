@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 // Publishing: tags and releases.

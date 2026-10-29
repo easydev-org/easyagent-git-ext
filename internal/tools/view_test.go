@@ -35,8 +35,8 @@ func TestCardForNamesATemplate(t *testing.T) {
 	}
 	// The extension id, the Service prefix and the mount must agree; a mismatch shows up as a 404 on
 	// every card rather than as wrong data, so it is worth pinning.
-	if c["ext"] != "git" {
-		t.Errorf("ext = %v, want git", c["ext"])
+	if c["ext"] != "gitdev" {
+		t.Errorf("ext = %v, want gitdev", c["ext"])
 	}
 	if c["template"] != cardTemplateClone {
 		t.Errorf("template = %v, want %v", c["template"], cardTemplateClone)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 // Reading a public repository. None of these require a token — that is the whole point of the

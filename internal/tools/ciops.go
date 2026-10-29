@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 // Artifacts and run control: the tools that DO something to CI, not just report on it.

@@ -71,11 +71,11 @@ const TOKEN_KEY = 'agent.token'
 // Absolute, and derived from where this document is MOUNTED.
 //
 // A relative `api/<path>` resolves against the current URL, and this UI is opened at
-// `/ext/github/#/ws/...` — the directory part is `/ext/github/`, which happens to be right, but the
-// same code served from `/ext/github` (no trailing slash) would resolve to `/ext/api/...` and 404.
+// `/ext/gitdev/#/ws/...` — the directory part is `/ext/gitdev/`, which happens to be right, but the
+// same code served from `/ext/gitdev` (no trailing slash) would resolve to `/ext/api/...` and 404.
 // Taking the mount point from the document URL and appending one fixed segment removes the guess.
 const API_BASE = (() => {
-  const p = location.pathname.replace(/\/+$/, '') // /ext/github
+  const p = location.pathname.replace(/\/+$/, '') // /ext/gitdev
   return `${p}/api/`
 })()
 

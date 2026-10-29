@@ -19,9 +19,15 @@ import (
 
 // ChannelName is the channel release events are published on.
 //
-// Deliberately NOT "gitea": the two extensions report different forges, and a session that
-// follows releases from GitHub should not also receive tags from a self-hosted Gitea.
-const ChannelName = "github"
+// It was "github" while this was a GitHub-only extension and a separate one reported the mirror.
+// Those are one extension now, so the channel is named after the extension rather than after one of
+// the two forges it talks to.
+//
+// CHANGING IT CUTS EVERY EXISTING SUBSCRIPTION. A subscriber listens on `release.<channel>.<repo>`
+// by literal string; an event published on a new channel does not reach an old pattern, and nothing
+// reports the miss — the session simply stops hearing about releases. That is why the name and the
+// pattern it produces are asserted in release_test.go rather than left to be noticed.
+const ChannelName = "gitdev"
 
 // Release is one published release, as the watcher sees it.
 type Release struct {

@@ -55,7 +55,7 @@ func bearerOf(r *http.Request) string {
  *
  * The prefix is part of every route rather than stripped by the caller: a host that proxies this
  * mount hands the handler the request it received, path intact. Registering bare "/pull" would never
- * match "/ext/github/api/pull" — a mistake that cost a whole debugging session on another extension.
+ * match "/ext/gitdev/api/pull" — a mistake that cost a whole debugging session on another extension.
  */
 func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	p := strings.TrimSuffix(prefix, "/") + "/api/"

@@ -127,7 +127,7 @@ export function requestOpenView(route: string, title: string): void {
  * This extension's UI id, taken from the mount path.
  *
  * Derived rather than hardcoded so a rename of the Service or the mount cannot leave the card asking
- * the host to open `/ext/<old-name>`. `/ext/github/?…` -> `github`.
+ * the host to open `/ext/<old-name>`. `/ext/gitdev/?…` -> `github`.
  */
 function extID(): string {
   const m = /^\/ext\/([a-z0-9-]+)/.exec(location.pathname)

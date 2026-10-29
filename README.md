@@ -1,4 +1,4 @@
-# easyagent-git-ext
+# easyagent-gitdev-ext
 
 A GitHub extension for easyagent: work on public repositories and their CI **without a local
 sandbox**.

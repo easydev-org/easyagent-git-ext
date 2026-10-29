@@ -8,7 +8,7 @@ import (
 	"github.com/easydev-org/easybus-sdk/manifest"
 )
 
-// The manifest is embedded from cmd/git-ext/manifest.yaml, and the repository root carries a
+// The manifest is embedded from cmd/gitdev-ext/manifest.yaml, and the repository root carries a
 // copy for readers. Two copies drift — so this asserts they are identical, and that the
 // manifest agrees with the Go code about which tools exist and which need permissions.
 
@@ -34,12 +34,12 @@ func TestEmbeddedManifestMatchesRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(root, "cmd", "git-ext", "manifest.yaml"))
+	b, err := os.ReadFile(filepath.Join(root, "cmd", "gitdev-ext", "manifest.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(a) != string(b) {
-		t.Fatal("manifest.yaml and cmd/git-ext/manifest.yaml have drifted; copy one over the other")
+		t.Fatal("manifest.yaml and cmd/gitdev-ext/manifest.yaml have drifted; copy one over the other")
 	}
 }
 

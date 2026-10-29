@@ -1,4 +1,4 @@
-# AGENTS.md — easyagent-git-ext
+# AGENTS.md — easyagent-gitdev-ext
 
 Working notes for agents editing this repo.
 

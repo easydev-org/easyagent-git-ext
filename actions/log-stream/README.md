@@ -19,7 +19,7 @@ jobs:
       checks: write        # required: the action creates and updates a check run
     steps:
       - uses: actions/checkout@v4
-      - uses: easydev-org/easyagent-git-ext/actions/log-stream@main
+      - uses: easydev-org/easyagent-gitdev-ext/actions/log-stream@main
         with:
           token: ${{ github.token }}     # composite actions do not inherit env
           command: make test

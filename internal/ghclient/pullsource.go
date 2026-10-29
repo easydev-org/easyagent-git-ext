@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/uihandler"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/uihandler"
 )
 
 // PullSource reads pull requests for the UI's PR page.

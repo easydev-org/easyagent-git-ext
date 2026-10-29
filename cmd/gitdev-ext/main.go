@@ -15,12 +15,12 @@ import (
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/tools"
-	"github.com/easydev-org/easyagent-git-ext/internal/uihandler"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/tools"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/uihandler"
 	// The PR source reads GitHub for the UI's pull-request pages — the one remote read in the UI's
 	// data path. Everything else the panel used to show came from a local checkout, which this
 	// extension no longer keeps.
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 //go:embed manifest.yaml
@@ -38,7 +38,7 @@ var uiFiles embed.FS
 // the API routes (what the JSON handlers claim), and the host's reverse-proxy rule. When they
 // disagreed, an API path fell through to the SPA and answered with an HTML document; the browser's
 // JSON parse failed and no 404 pointed at the path that was wrong.
-const uiBase = "/ext/git"
+const uiBase = "/ext/gitdev"
 
 // uiMux builds the extension's HTTP surface: the health/version probes plus the UI's data API.
 //
@@ -49,11 +49,11 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"name":"git"}`))
+		_, _ = w.Write([]byte(`{"ok":true,"name":"gitdev"}`))
 	})
 	mux.HandleFunc("/api/v1/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"git","version":"` + ver + `"}`))
+		_, _ = w.Write([]byte(`{"id":"gitdev","version":"` + ver + `"}`))
 	})
 	// Identity resolves a caller's bearer to a tenant by asking the agent, which owns the token
 	// table. Without this the UI API would have to trust `?tenant=`, i.e. let anyone read any
@@ -68,7 +68,7 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 }
 
 func main() {
-	log := slog.Default().With("svc", "git-ext")
+	log := slog.Default().With("svc", "gitdev-ext")
 
 	natsURL := envOr("NATS_URL", "nats://127.0.0.1:4222")
 	bus, err := nats.Connect(natsURL)
@@ -159,14 +159,14 @@ func main() {
 	ext = extension.New(bus, cfg)
 
 	if err := extension.Serve(ext, extension.ServeOptions{
-		// The browser UI, served under /ext/github and reverse-proxied there by the webui, so an
+		// The browser UI, served under /ext/gitdev and reverse-proxied there by the webui, so an
 		// iframe embedding it is SAME-ORIGIN with the host. See extension.UISpec for why the prefix
 		// matters.
 		UI: &extension.UISpec{
 			Assets:      uiFiles,
 			StripPrefix: "ui",
 			Base:        uiBase,
-			// /ext/git/api/* belongs to the handlers, not the bundle. Without this the SPA fallback
+			// /ext/gitdev/api/* belongs to the handlers, not the bundle. Without this the SPA fallback
 			// answers it with index.html, and the UI's fetch fails parsing HTML as JSON.
 			APIPrefix: "/api",
 			Title:     "Git",

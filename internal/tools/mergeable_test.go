@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 // The tri-state must read as three different things.

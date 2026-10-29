@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/ghclient"
 )
 
 // Issues and comments: the tools that let a caller SAY something rather than only look.
