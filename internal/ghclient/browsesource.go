@@ -33,14 +33,18 @@ func (s *BrowseSource) token(ctx context.Context) (string, error) {
 	return strings.TrimSpace(s.TokenFor(tenant)), nil
 }
 
-// account builds a client that is not tied to a repository. GitHub's account endpoints ignore the
-// repository in the remote, so an empty one is right rather than a placeholder.
+// account builds a client that is not tied to a repository.
+//
+// REMOTE IS EMPTY, and that is the whole point: `New` parses a remote into owner/repo and REFUSES
+// anything that is not that shape — including "https://github.com/", which is a host and not a
+// repository. An empty remote skips the parse, which is exactly right for the account endpoints:
+// they take the owner from the path they are calling, not from a repository.
 func (s *BrowseSource) account(ctx context.Context) (*Client, error) {
 	token, err := s.token(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return New(Options{Remote: "https://github.com/", Token: token})
+	return New(Options{Token: token})
 }
 
 func (s *BrowseSource) repo(ctx context.Context, name string) (*Client, error) {
