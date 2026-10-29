@@ -30,7 +30,14 @@
     | { kind: 'files'; repo: string; branch: string; dir: string }
 
   function parse(hash: string): Route {
-    const parts = hash.replace(/^#/, '').split('/').filter(Boolean)
+    // THE QUERY IS SPLIT OFF FIRST. Splitting the whole hash on "/" left it glued to the last
+    // segment — `e2e?branch=main` — and every route built from that segment then carried the old
+    // query into the new URL. The panel still worked, so the damage only showed as a growing hash:
+    // `?branch=a&dir=?branch=b&dir=`.
+    const raw = hash.replace(/^#/, '')
+    const qi = raw.indexOf('?')
+    const q = new URLSearchParams(qi >= 0 ? raw.slice(qi + 1) : '')
+    const parts = (qi >= 0 ? raw.slice(0, qi) : raw).split('/').filter(Boolean)
     if (parts[0] === 'card' && parts[1]) {
       return { kind: 'card', template: decodeURIComponent(parts[1]) }
     }
@@ -43,7 +50,6 @@
       }
     }
     if (parts[0] === 'files' && parts[1] && parts[2]) {
-      const q = new URLSearchParams(location.hash.split('?')[1] ?? '')
       return {
         kind: 'files',
         repo: `${parts[1]}/${parts[2]}`,
