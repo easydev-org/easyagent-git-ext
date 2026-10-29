@@ -264,9 +264,7 @@
   }
 </script>
 
-{#if error}
-  <div class="state error">{error}</div>
-{:else if route.kind === 'card'}
+{#if route.kind === 'card'}
   <!-- A tool card: the render of one finished call. Everything shown comes from the message the host
        handed over, so there is nothing to wait for and nothing that can have expired. -->
   {#if cardPayload}
@@ -290,7 +288,13 @@
   <div class="framed">
     <NavBar repo={navFor.repo} active={navFor.active} />
     <div class="framed-body">
-      {#if route.kind === 'pull'}
+      {#if error}
+        <!-- THE ERROR STAYS INSIDE THE FRAME. It used to replace the whole page, which took the nav
+             bar with it: a reader whose repository did not load was left on a line of text with no
+             way back to the list they came from. A failure of the CONTENT must not remove the
+             navigation. -->
+        <div class="state error">{error}</div>
+      {:else if route.kind === 'pull'}
         <PullPage repo={route.repo} number={route.number} />
       {:else if route.kind === 'issue'}
         <IssuePage repo={route.repo} number={route.number} />
