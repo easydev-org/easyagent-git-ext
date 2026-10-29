@@ -39,6 +39,16 @@ func (c *Client) Establish(ctx context.Context, name, upstreamURL, upstreamBranc
 		return "", "", fmt.Errorf("create the repository: %w", cerr)
 	}
 
+	// POINT THE CLIENT AT WHAT IT JUST CREATED. It was built with `NewForHost`, which has no owner or
+	// repository — every call after this one names a path, and without this they resolve against an
+	// empty owner and the forge answers "repository not found". The account is asked for rather than
+	// assumed, because the repository was created under whoever the token belongs to.
+	who, werr := c.WhoAmI(ctx)
+	if werr != nil {
+		return "", "", fmt.Errorf("find the account that owns the new repository: %w", werr)
+	}
+	c.Owner, c.Repo = who, name
+
 	// The content, from the upstream, under the SAME branch name: a mirror whose main is called
 	// something else would break every later step that assumes the upstream's names.
 	sha, perr := c.CreateBranchFromUpstream(ctx, upstreamBranch, upstreamURL, upstreamBranch, upstreamToken)
