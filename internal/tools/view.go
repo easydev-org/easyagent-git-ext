@@ -72,9 +72,35 @@ func pullView(repo string, number int, title string) map[string]any {
 // would render nothing is worse than no link at all.
 func issueView(repo string, number int, isPullRequest bool, title string) map[string]any {
 	if !isPullRequest {
-		return nil
+		// AN ISSUE gets its own page now. It used to return nil — "there is nowhere to go" — which
+		// meant a card for an issue offered no button while a card for a pull request did, for no
+		// reason the reader could see. GitHub numbers both in one sequence, so one route serves both
+		// and the page says which it is.
+		// The repository is TWO path segments — `#/issue/<owner>/<name>/<n>` — matching how the
+		// panel's router reads it and how everybody writes a repository. One escaped token would be
+		// opaque, and an unescaped slash would make the number unreachable.
+		return map[string]any{
+			"ext":   uiExtID,
+			"route": "/issue/" + repo + "/" + itoa(number),
+			"title": title,
+		}
 	}
 	return pullView(repo, number, title)
+}
+
+// itoa avoids pulling strconv in for one call in one file.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [12]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
 }
 
 // wsRoute is the route for one workspace view.

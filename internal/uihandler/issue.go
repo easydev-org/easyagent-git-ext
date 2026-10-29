@@ -1,0 +1,77 @@
+package uihandler
+
+import (
+	"context"
+	"net/http"
+)
+
+/**
+ * IssueSource reads an ISSUE from GitHub for the UI's issue pages.
+ *
+ * WHY AN ISSUE NEEDS A PAGE AT ALL: a pull request already has one, and an issue is the same kind of
+ * thing — a number, a title, a body, a conversation — that a reader wants to read in full rather
+ * than skim in a card. Without this, `gh-issue-show` produced a card and no way to open it, so a
+ * result that pointed at a pull request offered a button and one that pointed at an issue did not,
+ * for no reason the reader could see.
+ *
+ * Declared as an interface for the same reason PullSource is: this package must not depend on the
+ * GitHub client, and a deployment without a token simply leaves it nil.
+ */
+type IssueSource interface {
+	// Issue returns the issue's own facts.
+	Issue(ctx context.Context, repo string, number int) (IssueView, error)
+	// Comments returns its conversation, oldest first.
+	Comments(ctx context.Context, repo string, number int) ([]CommentView, error)
+}
+
+// IssueView is the issue as the page shows it.
+type IssueView struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
+	Body   string `json:"body"`
+	Author string `json:"author"`
+	URL    string `json:"url"`
+	// Labels are the issue's own labels, in the order GitHub returns them.
+	Labels []string `json:"labels"`
+	// IsPullRequest is reported rather than hidden: GitHub numbers issues and pull requests in ONE
+	// sequence, so a reader who opens "/issue/3" on a pull request should be told what they are
+	// looking at rather than shown a page that quietly omits the code.
+	IsPullRequest bool `json:"isPullRequest"`
+}
+
+// CommentView is one message in an issue's conversation.
+type CommentView struct {
+	ID     int64  `json:"id"`
+	Author string `json:"author"`
+	Body   string `json:"body"`
+	When   string `json:"when"`
+}
+
+// The issue page's endpoints. They reuse authedPull's authentication and argument parsing — a repo
+// and a number are a repo and a number, whichever kind of item the number names.
+func (h *Handler) issue(w http.ResponseWriter, r *http.Request) {
+	repo, n, ok := h.authedPull(w, r)
+	if !ok {
+		return
+	}
+	v, err := h.Issues.Issue(r.Context(), repo, n)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (h *Handler) issueComments(w http.ResponseWriter, r *http.Request) {
+	repo, n, ok := h.authedPull(w, r)
+	if !ok {
+		return
+	}
+	v, err := h.Issues.Comments(r.Context(), repo, n)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"comments": v, "count": len(v)})
+}

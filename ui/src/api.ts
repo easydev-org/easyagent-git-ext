@@ -22,6 +22,25 @@ export interface TreeEntry {
   dir?: boolean
 }
 
+/** One issue on GitHub. `isPullRequest` is reported because GitHub numbers both in one sequence. */
+export interface IssueView {
+  number: number
+  title: string
+  state: string
+  body: string
+  author: string
+  url: string
+  labels: string[] | null
+  isPullRequest: boolean
+}
+
+export interface CommentView {
+  id: number
+  author: string
+  body: string
+  when: string
+}
+
 export interface FileBody {
   path: string
   size: number
@@ -185,6 +204,14 @@ export const api = {
     get<{ diff: string }>('pull/diff', { repo, number: String(number) }).then(r => r.diff),
   pullChecks: (repo: string, number: number) =>
     get<PullChecks>('pull/checks', { repo, number: String(number) }),
+  // Issues. GitHub numbers issues and pull requests in one sequence, so the same route answers for
+  // both and says which it is.
+  issue: (repo: string, number: number) => get<IssueView>('issue', { repo, number: String(number) }),
+  issueComments: (repo: string, number: number) =>
+    get<{ comments: CommentView[]; count: number }>('issue/comments', {
+      repo,
+      number: String(number),
+    }).then(r => r.comments ?? []),
 }
 
 /** A pull request as the page shows it. */

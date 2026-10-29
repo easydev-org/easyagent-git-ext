@@ -29,6 +29,9 @@ type Handler struct {
 	// Pulls reads pull requests from GitHub. Optional: a deployment without a GitHub token simply
 	// has no PR pages, rather than failing at call time.
 	Pulls PullSource
+	// Issues reads issues from GitHub. Optional, like Pulls: a deployment with no token has no issue
+	// pages rather than failing at call time.
+	Issues IssueSource
 	// Forge builds a client for one MIRROR repository in the caller's scope. Optional: a deployment
 	// with no mirror configured has no file-browsing pages.
 	//
@@ -76,6 +79,13 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc(p+"pull/files", h.pullFiles)
 	mux.HandleFunc(p+"pull/diff", h.pullDiff)
 	mux.HandleFunc(p+"pull/checks", h.pullChecks)
+
+	// The issue page. GitHub numbers issues and pull requests in one sequence, so this route can
+	// answer for either — and the page says which, rather than pretending an issue has code.
+	if h.Issues != nil {
+		mux.HandleFunc(p+"issue", h.issue)
+		mux.HandleFunc(p+"issue/comments", h.issueComments)
+	}
 
 	// The MIRROR's own pages: browse the repository a change is being made in.
 	//

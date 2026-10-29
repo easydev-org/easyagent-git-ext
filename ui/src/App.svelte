@@ -10,6 +10,7 @@
   } from './theme.svelte'
   import ToolCard from './ToolCard.svelte'
   import PullPage from './PullPage.svelte'
+  import IssuePage from './IssuePage.svelte'
   import CodePane from './CodePane.svelte'
   import Tree from './Tree.svelte'
 
@@ -27,6 +28,9 @@
     // A pull request as a PAGE. It reads GitHub: a PR is not in the mirror, and the point of opening
     // the page is to see it NOW rather than as it was when a tool ran.
     | { kind: 'pull'; repo: string; number: number }
+    // An ISSUE as a page. Same reasoning, and the same route shape: GitHub numbers both in one
+    // sequence, so one page can answer for either and says which it is.
+    | { kind: 'issue'; repo: string; number: number }
     | { kind: 'files'; repo: string; branch: string; dir: string }
 
   function parse(hash: string): Route {
@@ -47,6 +51,12 @@
       const n = Number(parts[3])
       if (Number.isFinite(n) && n > 0) {
         return { kind: 'pull', repo: `${parts[1]}/${parts[2]}`, number: n }
+      }
+    }
+    if (parts[0] === 'issue' && parts[1] && parts[2] && parts[3]) {
+      const n = Number(parts[3])
+      if (Number.isFinite(n) && n > 0) {
+        return { kind: 'issue', repo: `${parts[1]}/${parts[2]}`, number: n }
       }
     }
     if (parts[0] === 'files' && parts[1] && parts[2]) {
@@ -199,6 +209,8 @@
   {/if}
 {:else if route.kind === 'pull'}
   <PullPage repo={route.repo} number={route.number} />
+{:else if route.kind === 'issue'}
+  <IssuePage repo={route.repo} number={route.number} />
 {:else if route.kind === 'files'}
   <div class="layout">
     <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a rail

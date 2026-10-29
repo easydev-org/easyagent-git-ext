@@ -48,7 +48,7 @@ const uiBase = "/ext/gitdev"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ver, agentURL string, pulls uihandler.PullSource, forgeFor uihandler.MirrorForgeFunc) http.Handler {
+func uiMux(ver, agentURL string, pulls uihandler.PullSource, issues uihandler.IssueSource, forgeFor uihandler.MirrorForgeFunc) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -66,6 +66,7 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource, forgeFor uihandler.
 		// Pull requests are the one remote read the UI makes: a page shows the CURRENT state, where a
 		// card replays the snapshot a tool returned.
 		Pulls: pulls,
+		Issues: issues,
 		// The MIRROR's pages. Same shape as Pulls: a function resolved per request, because the
 		// token and the server list live in configuration and can change while this pod runs.
 		Forge: forgeFor,
@@ -252,6 +253,18 @@ func main() {
 				},
 				// The handler authenticated already and put the tenant on the request context; this
 				// reads it back rather than authenticating twice.
+				TenantFrom: uihandler.TenantFromContext,
+			},
+			// Issues get their own page for the same reason pull requests have one: a number, a
+			// title, a body and a conversation are things a reader reads in full, not in a card.
+			&ghclient.IssueSource{
+				TokenFor: func(tenant string) string {
+					if ext == nil {
+						return ""
+					}
+					s, _ := ext.GetConfig(tenant, "token", "").(string)
+					return s
+				},
 				TenantFrom: uihandler.TenantFromContext,
 			},
 			mirrorForge(ext),
