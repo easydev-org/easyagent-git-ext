@@ -32,6 +32,8 @@ export interface IssueView {
   url: string
   labels: string[] | null
   isPullRequest: boolean
+  /** How many comments, so a list need not fetch each conversation. */
+  comments: number
 }
 
 export interface CommentView {

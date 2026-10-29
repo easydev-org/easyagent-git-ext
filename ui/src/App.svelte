@@ -371,11 +371,6 @@
       flex: 1 1 auto;
       border-right: 0;
     }
-    /* The tabs are a 44px-tall target on a touch screen; a 4px gap between them is a mis-tap
-       waiting to happen. */
-    .tabs button {
-      padding: 8px 12px;
-    }
   }
   main {
     flex: 1;

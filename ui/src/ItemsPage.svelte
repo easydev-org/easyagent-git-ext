@@ -12,12 +12,12 @@
   let items = $state<IssueView[]>([])
   let error = $state('')
   let loading = $state(true)
-  let state = $state('open')
+  let filter = $state('open')
 
   async function load(): Promise<void> {
     loading = true
     try {
-      items = await api.issues(repo, kind, state)
+      items = await api.issues(repo, kind, filter)
       error = ''
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
@@ -31,7 +31,7 @@
   })
 
   function toggleState(): void {
-    state = state === 'open' ? 'closed' : 'open'
+    filter = filter === 'open' ? 'closed' : 'open'
     void load()
   }
 
@@ -52,16 +52,16 @@
   <div class="page">
     <header class="head">
       <h2 class="title">{plural === 'issue' ? 'Issues' : 'Pull requests'}</h2>
-      <span class="muted t-meta">{items.length} {state}</span>
+      <span class="muted t-meta">{items.length} {filter}</span>
       <button type="button" class="toggle" onclick={toggleState}>
-        show {state === 'open' ? 'closed' : 'open'}
+        show {filter === 'open' ? 'closed' : 'open'}
       </button>
     </header>
     <div class="body-scroll">
       {#if loading}
         <div class="muted">Loading…</div>
       {:else if items.length === 0}
-        <div class="muted">No {state} {plural}s.</div>
+        <div class="muted">No {filter} {plural}s.</div>
       {:else}
         <ul class="items">
           {#each items as it (it.number)}

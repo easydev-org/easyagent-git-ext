@@ -79,7 +79,6 @@
   }
   .repo:hover { text-decoration: underline; }
   .owner { color: var(--muted-foreground); font-weight: 400; }
-  .name { }
 
   .tabs {
     display: flex;
