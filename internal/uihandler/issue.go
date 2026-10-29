@@ -3,6 +3,7 @@ package uihandler
 import (
 	"context"
 	"net/http"
+	"strconv"
 )
 
 /**
@@ -22,6 +23,12 @@ type IssueSource interface {
 	Issue(ctx context.Context, repo string, number int) (IssueView, error)
 	// Comments returns its conversation, oldest first.
 	Comments(ctx context.Context, repo string, number int) ([]CommentView, error)
+	// List returns issues and/or pull requests.
+	//
+	// ONE METHOD FOR BOTH because GitHub numbers them in one sequence and the two lists are the same
+	// query with a different filter. Two methods would be two places to keep the paging and the
+	// filtering right.
+	List(ctx context.Context, repo string, kind, state string, limit int) ([]IssueView, error)
 }
 
 // IssueView is the issue as the page shows it.
@@ -38,6 +45,8 @@ type IssueView struct {
 	// sequence, so a reader who opens "/issue/3" on a pull request should be told what they are
 	// looking at rather than shown a page that quietly omits the code.
 	IsPullRequest bool `json:"isPullRequest"`
+	// Comments is the count, so a list can show it without fetching each conversation.
+	Comments int `json:"comments"`
 }
 
 // CommentView is one message in an issue's conversation.
@@ -74,4 +83,43 @@ func (h *Handler) issueComments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"comments": v, "count": len(v)})
+}
+
+// issues lists a repository's issues or pull requests.
+//
+// `kind` is "issue" or "pr"; anything else is refused rather than ignored, because a filter that
+// silently does nothing looks like it worked.
+func (h *Handler) issues(w http.ResponseWriter, r *http.Request) {
+	tenant, err := h.who(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	*r = *r.WithContext(context.WithValue(r.Context(), tenantKey{}, tenant))
+
+	q := r.URL.Query()
+	repo := q.Get("repo")
+	if repo == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo (owner/name) is required"})
+		return
+	}
+	kind := q.Get("kind")
+	switch kind {
+	case "issue", "pr":
+	case "":
+		kind = "issue"
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `kind must be "issue" or "pr"`})
+		return
+	}
+	limit := 30
+	if v, cerr := strconv.Atoi(q.Get("limit")); cerr == nil && v > 0 && v <= 100 {
+		limit = v
+	}
+	list, lerr := h.Issues.List(r.Context(), repo, kind, q.Get("state"), limit)
+	if lerr != nil {
+		writeErr(w, lerr)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": list, "count": len(list), "kind": kind})
 }

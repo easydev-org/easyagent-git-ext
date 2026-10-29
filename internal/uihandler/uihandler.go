@@ -85,6 +85,7 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	// The issue page. GitHub numbers issues and pull requests in one sequence, so this route can
 	// answer for either — and the page says which, rather than pretending an issue has code.
 	if h.Issues != nil {
+		mux.HandleFunc(p+"issues", h.issues)
 		mux.HandleFunc(p+"issue", h.issue)
 		mux.HandleFunc(p+"issue/comments", h.issueComments)
 	}

@@ -13,6 +13,8 @@
   import IssuePage from './IssuePage.svelte'
   import RunsPage from './RunsPage.svelte'
   import RunPage from './RunPage.svelte'
+  import ItemsPage from './ItemsPage.svelte'
+  import NavBar from './NavBar.svelte'
   import CodePane from './CodePane.svelte'
   import Tree from './Tree.svelte'
 
@@ -37,6 +39,9 @@
     // are two levels: you arrive at the list, then open one.
     | { kind: 'runs'; repo: string }
     | { kind: 'run'; repo: string; id: number }
+    // The two LISTS: a tab bar is useless if every tab leads to a page that needs a number.
+    | { kind: 'pulls'; repo: string }
+    | { kind: 'issues'; repo: string }
     | { kind: 'files'; repo: string; branch: string; dir: string }
 
   function parse(hash: string): Route {
@@ -68,6 +73,12 @@
     if (parts[0] === 'runs' && parts[1] && parts[2]) {
       return { kind: 'runs', repo: `${parts[1]}/${parts[2]}` }
     }
+    if (parts[0] === 'pulls' && parts[1] && parts[2]) {
+      return { kind: 'pulls', repo: `${parts[1]}/${parts[2]}` }
+    }
+    if (parts[0] === 'issues' && parts[1] && parts[2]) {
+      return { kind: 'issues', repo: `${parts[1]}/${parts[2]}` }
+    }
     if (parts[0] === 'run' && parts[1] && parts[2] && parts[3]) {
       const n = Number(parts[3])
       if (Number.isFinite(n) && n > 0) {
@@ -89,6 +100,37 @@
   }
 
   let route = $state<Route>(parse(location.hash))
+
+  /**
+   * The repository this route is about, and which tab it belongs to.
+   *
+   * Derived from the route rather than passed down by each page: a page that forgot to say which
+   * tab it is would leave the nav bar highlighting nothing, and every page would have to know about
+   * a bar it does not own.
+   *
+   * A CARD HAS NEITHER. It is one tool's result embedded in a conversation — a nav bar there would
+   * offer to leave a place the reader is not in.
+   */
+  const navFor = $derived.by(() => {
+    switch (route.kind) {
+      case 'files':
+        return { repo: route.repo, active: 'files' }
+      case 'pull':
+        return { repo: route.repo, active: 'pulls' }
+      case 'pulls':
+        return { repo: route.repo, active: 'pulls' }
+      case 'issue':
+        return { repo: route.repo, active: 'issues' }
+      case 'issues':
+        return { repo: route.repo, active: 'issues' }
+      case 'run':
+        return { repo: route.repo, active: 'runs' }
+      case 'runs':
+        return { repo: route.repo, active: 'runs' }
+      default:
+        return { repo: '', active: '' }
+    }
+  })
 
   let entries = $state<TreeEntry[]>([])
   let branches = $state<string[]>([])
@@ -222,58 +264,94 @@
   {:else}
     <div class="state muted">waiting for data…</div>
   {/if}
-{:else if route.kind === 'pull'}
-  <PullPage repo={route.repo} number={route.number} />
-{:else if route.kind === 'issue'}
-  <IssuePage repo={route.repo} number={route.number} />
-{:else if route.kind === 'runs'}
-  <RunsPage repo={route.repo} />
-{:else if route.kind === 'run'}
-  <RunPage repo={route.repo} id={route.id} />
-{:else if route.kind === 'files'}
-  <div class="layout">
-    <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a rail
-         and the content fills the rest, which is how this reads best in the host's side panel. -->
-    {#if !narrow || openPath === ''}
-      <aside>
-        {#if branches.length > 1}
-          <select class="branch" value={branch} onchange={(e) => pickBranch(e.currentTarget.value)}>
-            {#each branches as b (b)}
-              <option value={b}>{b}</option>
-            {/each}
-          </select>
-        {/if}
-        <Tree
-          {entries}
-          dir={route.dir}
-          ws={route.repo}
-          activePath={openPath}
-          onopen={openFile}
-          ondir={openDir}
-        />
-      </aside>
-    {/if}
-    {#if !(narrow && openPath === '')}
-      <main>
-        {#if loading}
-          <div class="state muted">Loading…</div>
-        {:else}
-          <CodePane {file} onback={narrow && openPath !== '' ? backToTree : null} />
-        {/if}
-      </main>
-    {/if}
-  </div>
 {:else}
-  <div class="state">
-    Nothing selected.
-    <div class="muted t-meta">
-      Open a repository with <span class="mono">#/files/&lt;owner&gt;/&lt;name&gt;</span>, or run a
-      tool — its result opens here.
+  <!-- Every OTHER page shares one frame: a sticky nav bar above, the page below it.
+
+       WHY HERE AND NOT IN EACH PAGE: the bar is the same everywhere and is derived from the route,
+       so putting it in each page would be seven copies to keep in step — and a page that forgot it
+       would be a room with no door. -->
+  <div class="framed">
+    <NavBar repo={navFor.repo} active={navFor.active} />
+    <div class="framed-body">
+      {#if route.kind === 'pull'}
+        <PullPage repo={route.repo} number={route.number} />
+      {:else if route.kind === 'issue'}
+        <IssuePage repo={route.repo} number={route.number} />
+      {:else if route.kind === 'pulls'}
+        <ItemsPage repo={route.repo} kind="pr" />
+      {:else if route.kind === 'issues'}
+        <ItemsPage repo={route.repo} kind="issue" />
+      {:else if route.kind === 'runs'}
+        <RunsPage repo={route.repo} />
+      {:else if route.kind === 'run'}
+        <RunPage repo={route.repo} id={route.id} />
+      {:else if route.kind === 'files'}
+        <div class="layout">
+          <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a
+               rail and the content fills the rest, which is how this reads best in a side panel. -->
+          {#if !narrow || openPath === ''}
+            <aside>
+              {#if branches.length > 1}
+                <select class="branch" value={branch} onchange={(e) => pickBranch(e.currentTarget.value)}>
+                  {#each branches as b (b)}
+                    <option value={b}>{b}</option>
+                  {/each}
+                </select>
+              {/if}
+              <Tree
+                {entries}
+                dir={route.dir}
+                ws={route.repo}
+                activePath={openPath}
+                onopen={openFile}
+                ondir={openDir}
+              />
+            </aside>
+          {/if}
+          {#if !(narrow && openPath === '')}
+            <main>
+              {#if loading}
+                <div class="state muted">Loading…</div>
+              {:else}
+                <CodePane {file} onback={narrow && openPath !== '' ? backToTree : null} />
+              {/if}
+            </main>
+          {/if}
+        </div>
+      {:else}
+        <div class="state">
+          Nothing selected.
+          <div class="muted t-meta">
+            Open a repository with <span class="mono">#/files/&lt;owner&gt;/&lt;name&gt;</span>, or run a
+            tool — its result opens here.
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
 
 <style>
+  /* The frame every non-card page shares: a sticky bar, then the page filling what is left.
+     `min-height: 0` on the body is what lets a page inside it scroll instead of growing — without it
+     the flex child refuses to shrink below its content and the bar scrolls away with the page. */
+  .framed {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .framed-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .framed-body > :global(*) {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   .layout {
     display: flex;
     height: 100%;

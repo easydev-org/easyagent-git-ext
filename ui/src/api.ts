@@ -247,6 +247,15 @@ export const api = {
       repo,
       number: String(number),
     }).then(r => r.comments ?? []),
+  // Issues OR pull requests. GitHub numbers both in one sequence, so it is one query with a filter —
+  // and the filter is applied on the server so a caller cannot forget it.
+  issues: (repo: string, kind: 'issue' | 'pr', state = 'open', limit = 50) =>
+    get<{ items: IssueView[]; count: number }>('issues', {
+      repo,
+      kind,
+      state,
+      limit: String(limit),
+    }).then(r => r.items ?? []),
   // CI runs. The log is fetched PER JOB and only when asked: a run's logs are megabytes, and a page
   // that fetched them all would be slow for a reader who wanted one job.
   runs: (repo: string, limit = 20) =>

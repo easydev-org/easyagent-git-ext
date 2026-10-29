@@ -79,3 +79,34 @@ func (s *IssueSource) Comments(ctx context.Context, repo string, number int) ([]
 	}
 	return out, nil
 }
+
+/**
+ * List returns a repository's issues or pull requests.
+ *
+ * GITHUB NUMBERS BOTH IN ONE SEQUENCE, so this is one query with a filter applied after the fetch.
+ * The filter is applied HERE rather than left to the caller: a caller that forgot it would show pull
+ * requests in an issue list and never notice, because a pull request IS an issue with code attached.
+ */
+func (s *IssueSource) List(ctx context.Context, repo, kind, state string, limit int) ([]uihandler.IssueView, error) {
+	c, err := s.client(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	list, err := c.ListIssuesBoth(ctx, ListIssuesOptions{State: state, Limit: limit})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uihandler.IssueView, 0, len(list))
+	for _, is := range list {
+		wantPR := kind == "pr"
+		if is.IsPullRequest != wantPR {
+			continue
+		}
+		out = append(out, uihandler.IssueView{
+			Number: is.Number, Title: is.Title, State: is.State,
+			Body: is.Body, Author: is.Author, URL: is.HTMLURL,
+			Labels: is.Labels, IsPullRequest: is.IsPullRequest, Comments: is.Comments,
+		})
+	}
+	return out, nil
+}
