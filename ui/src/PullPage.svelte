@@ -201,6 +201,10 @@
     max-width: 68rem;
     width: 100%;
     margin: 0 auto;
+    /* A FLEX CHILD SHRINKS BY DEFAULT. Inside a column with a scrolling list below, a header that
+       does not opt out of shrinking gets squashed as the list takes the space — its text clips
+       rather than the layout scrolling. */
+    flex: 0 0 auto;
   }
   .title-row {
     display: flex;

@@ -129,6 +129,10 @@
     max-width: 68rem;
     width: 100%;
     margin: 0 auto;
+    /* A FLEX CHILD SHRINKS BY DEFAULT. Inside a column with a scrolling list below, a header that
+       does not opt out of shrinking gets squashed as the list takes the space — its text clips
+       rather than the layout scrolling. */
+    flex: 0 0 auto;
   }
   .title { margin: 0; font-size: 1.05rem; font-weight: 600; }
 
@@ -141,11 +145,18 @@
     margin: 0 auto;
     overflow-x: auto;
     scrollbar-width: none;
+    /* A FLEX CHILD SHRINKS BY DEFAULT, and this one is inside a column: the list below it took the
+       space and the tab row was squashed to 10px, cutting the text in half. `flex: 0 0 auto` says
+       "this row is as tall as its buttons and gives none of it away". */
+    flex: 0 0 auto;
   }
   .orgs::-webkit-scrollbar { display: none; }
   .org {
     font: inherit;
     font-size: var(--text-meta, 12px);
+    /* An explicit line-height, because the row's height is now driven by the button and a font
+       whose default metrics are tight would still look clipped. */
+    line-height: 1.4;
     padding: 4px 12px;
     border-radius: 999px;
     border: 1px solid var(--border);
@@ -153,6 +164,7 @@
     color: var(--muted-foreground);
     cursor: pointer;
     white-space: nowrap;
+    flex: 0 0 auto;
   }
   .org:hover { background: var(--secondary); color: var(--foreground); }
   .org:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
