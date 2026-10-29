@@ -29,6 +29,32 @@ func (t *toolset) prChecks(ctx context.Context, args map[string]any, session, te
 	state := ch.State()
 	var b strings.Builder
 	fmt.Fprintf(&b, "CI: %s\n", state)
+
+	// MERGEABILITY travels with CI because they answer the same question — "can this land?" — and a
+	// caller that learns about a conflict only when `gh-pr-merge` fails has already spent the review.
+	//
+	// A failure to READ it is not a failure of the tool: CI status is still useful, and the merge
+	// state is reported as unknown rather than dragging the whole result down.
+	mergeable := "unknown"
+	if pr, perr := c.PR(ctx, n); perr == nil {
+		switch {
+		case pr.Merged:
+			mergeable = "merged"
+		case pr.Mergeable == nil:
+			// GitHub computes mergeability lazily; a request made right after a push answers null
+			// and settles within seconds. Saying so is more useful than "false".
+			mergeable = "computing"
+		case *pr.Mergeable:
+			mergeable = "clean"
+		default:
+			mergeable = "conflict"
+		}
+	}
+	fmt.Fprintf(&b, "mergeable: %s\n", mergeable)
+	if mergeable == "conflict" {
+		b.WriteString("(the branch conflicts with its base — start a NEW branch from " +
+			"`upstream:<base>` and redo the change; do not rewrite the branch under review)\n")
+	}
 	if state == "none" {
 		b.WriteString("(no checks and no status contexts have reported for this commit)\n")
 	}
@@ -41,7 +67,7 @@ func (t *toolset) prChecks(ctx context.Context, args map[string]any, session, te
 	return extension.ToolResultData{
 		Content: b.String(),
 		Data: map[string]any{
-			"state": state, "checks": ch, "sha": ch.HeadSHA,
+			"state": state, "checks": ch, "sha": ch.HeadSHA, "mergeable": mergeable,
 			// CI status is a list of named checks — the shape a card is good at, and the thing a
 			// reader wants at a glance before deciding whether to merge.
 			"card": cardFor(cardTemplatePRCheck),
