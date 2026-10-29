@@ -139,6 +139,22 @@ type Job struct {
 	URL        string
 }
 
+/**
+ * Run returns ONE run.
+ *
+ * A page opened on a specific run needs that run, and listing the repository's runs to find it would
+ * cost a paginated request per page — and get slower as the repository gets busier, for a lookup
+ * that GitHub offers directly.
+ */
+func (c *Client) Run(ctx context.Context, runID int64) (Run, error) {
+	r, resp, err := c.gh.Actions.GetWorkflowRunByID(ctx, c.Owner, c.Repo, runID)
+	c.note(resp)
+	if err != nil {
+		return Run{}, err
+	}
+	return runFromG(r), nil
+}
+
 // RunJobs lists the jobs of a run with their per-step status.
 //
 // This is the LIVE view: while a run is in progress, `status` is in_progress and the step that

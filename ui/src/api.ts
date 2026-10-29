@@ -41,6 +41,41 @@ export interface CommentView {
   when: string
 }
 
+/** One workflow run. `conclusion` is empty while it is still going. */
+export interface RunView {
+  id: number
+  name: string
+  status: string
+  conclusion: string
+  branch: string
+  event: string
+  headSha: string
+  url: string
+  createdAt: string
+  attempt: number
+  done: boolean
+}
+
+/** One step of a job, as GitHub reports it while the job is running. */
+export interface StepView {
+  name: string
+  status: string
+  conclusion: string
+  number: number
+}
+
+export interface JobView {
+  id: number
+  name: string
+  status: string
+  conclusion: string
+  startedAt: string
+  url: string
+  steps: StepView[] | null
+  /** False while the job runs: GitHub publishes a job's log only once it has finished. */
+  logAvailable: boolean
+}
+
 export interface FileBody {
   path: string
   size: number
@@ -212,6 +247,21 @@ export const api = {
       repo,
       number: String(number),
     }).then(r => r.comments ?? []),
+  // CI runs. The log is fetched PER JOB and only when asked: a run's logs are megabytes, and a page
+  // that fetched them all would be slow for a reader who wanted one job.
+  runs: (repo: string, limit = 20) =>
+    get<{ runs: RunView[]; count: number }>('runs', { repo, limit: String(limit) }).then(
+      r => r.runs ?? [],
+    ),
+  run: (repo: string, id: number) => get<RunView>('run', { repo, run: String(id) }),
+  runJobs: (repo: string, id: number) =>
+    get<{ jobs: JobView[]; count: number }>('run/jobs', { repo, run: String(id) }).then(
+      r => r.jobs ?? [],
+    ),
+  jobLog: (repo: string, job: number) =>
+    get<{ log: string; bytes: number }>('run/job/log', { repo, job: String(job) }).then(
+      r => r.log ?? '',
+    ),
 }
 
 /** A pull request as the page shows it. */

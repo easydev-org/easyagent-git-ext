@@ -11,6 +11,8 @@
   import ToolCard from './ToolCard.svelte'
   import PullPage from './PullPage.svelte'
   import IssuePage from './IssuePage.svelte'
+  import RunsPage from './RunsPage.svelte'
+  import RunPage from './RunPage.svelte'
   import CodePane from './CodePane.svelte'
   import Tree from './Tree.svelte'
 
@@ -31,6 +33,10 @@
     // An ISSUE as a page. Same reasoning, and the same route shape: GitHub numbers both in one
     // sequence, so one page can answer for either and says which it is.
     | { kind: 'issue'; repo: string; number: number }
+    // CI. `runs` is the repository's list; `run` is one run's jobs and logs. Two routes because they
+    // are two levels: you arrive at the list, then open one.
+    | { kind: 'runs'; repo: string }
+    | { kind: 'run'; repo: string; id: number }
     | { kind: 'files'; repo: string; branch: string; dir: string }
 
   function parse(hash: string): Route {
@@ -57,6 +63,15 @@
       const n = Number(parts[3])
       if (Number.isFinite(n) && n > 0) {
         return { kind: 'issue', repo: `${parts[1]}/${parts[2]}`, number: n }
+      }
+    }
+    if (parts[0] === 'runs' && parts[1] && parts[2]) {
+      return { kind: 'runs', repo: `${parts[1]}/${parts[2]}` }
+    }
+    if (parts[0] === 'run' && parts[1] && parts[2] && parts[3]) {
+      const n = Number(parts[3])
+      if (Number.isFinite(n) && n > 0) {
+        return { kind: 'run', repo: `${parts[1]}/${parts[2]}`, id: n }
       }
     }
     if (parts[0] === 'files' && parts[1] && parts[2]) {
@@ -211,6 +226,10 @@
   <PullPage repo={route.repo} number={route.number} />
 {:else if route.kind === 'issue'}
   <IssuePage repo={route.repo} number={route.number} />
+{:else if route.kind === 'runs'}
+  <RunsPage repo={route.repo} />
+{:else if route.kind === 'run'}
+  <RunPage repo={route.repo} id={route.id} />
 {:else if route.kind === 'files'}
   <div class="layout">
     <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a rail

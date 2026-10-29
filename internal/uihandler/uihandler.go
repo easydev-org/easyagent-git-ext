@@ -32,6 +32,8 @@ type Handler struct {
 	// Issues reads issues from GitHub. Optional, like Pulls: a deployment with no token has no issue
 	// pages rather than failing at call time.
 	Issues IssueSource
+	// Runs reads CI runs from GitHub. Optional: without it there are no run pages.
+	Runs RunSource
 	// Forge builds a client for one MIRROR repository in the caller's scope. Optional: a deployment
 	// with no mirror configured has no file-browsing pages.
 	//
@@ -85,6 +87,17 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	if h.Issues != nil {
 		mux.HandleFunc(p+"issue", h.issue)
 		mux.HandleFunc(p+"issue/comments", h.issueComments)
+	}
+
+	// CI runs: the list, one run's jobs, and one job's log.
+	//
+	// The log is a SEPARATE route on purpose — it is the only one of the three that is not cheap, and
+	// a reader opens it for one job at a time.
+	if h.Runs != nil {
+		mux.HandleFunc(p+"runs", h.runs)
+		mux.HandleFunc(p+"run", h.run)
+		mux.HandleFunc(p+"run/jobs", h.runJobs)
+		mux.HandleFunc(p+"run/job/log", h.runJobLog)
 	}
 
 	// The MIRROR's own pages: browse the repository a change is being made in.
