@@ -238,12 +238,22 @@ function ask(path: string): Promise<{ ok: boolean; status: number; body?: unknow
 }
 
 /** Same-origin fetch, with the bearer from localStorage when there is one. */
-async function direct(path: string): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
+async function direct(
+  path: string,
+  method: 'GET' | 'POST' = 'GET',
+): Promise<{ ok: boolean; status: number; body?: unknown; error?: string }> {
   try {
     const tok = bearer()
     const r = await fetch(`${API_BASE}${path}`, {
+      method,
+      // A body is required by some proxies to accept a POST; an empty object is honest — every
+      // argument this endpoint takes is in the query string.
+      ...(method === 'POST' ? { body: '{}' } : {}),
       headers: {
         accept: 'application/json',
+        // ONE headers object, built once: a second spread after it would REPLACE this one rather
+        // than add to it, and the Authorization header would silently disappear.
+        ...(method === 'POST' ? { 'content-type': 'application/json' } : {}),
         ...(tok ? { authorization: `Bearer ${tok}` } : {}),
       },
     })
@@ -270,6 +280,23 @@ async function get<T>(path: string, params: Record<string, string | undefined> =
   return r.body as T
 }
 
+/**
+ * POST, for the one endpoint that changes something.
+ *
+ * It goes through `direct` rather than the host bridge on purpose: the bridge carries a GET path and
+ * nothing else, and widening it for one call would make every future POST depend on the host being
+ * up to date. The token is in localStorage, so a same-origin fetch needs no help.
+ */
+async function post<T>(path: string): Promise<T> {
+  const r = await direct(path, 'POST')
+  if (!r.ok) {
+    const body = r.body as { error?: string } | string | undefined
+    const msg = typeof body === 'string' ? body : body?.error
+    throw new Error(msg ?? r.error ?? `HTTP ${r.status}`)
+  }
+  return r.body as T
+}
+
 export const api = {
   // THE LAYER ABOVE A REPOSITORY. These answer "what is there" — the question a reader has before
   // the panel can show them anything about a repository.
@@ -286,6 +313,16 @@ export const api = {
     const q = repos.map(r => 'repo=' + encodeURIComponent(r)).join('&')
     return get<{ mirrored: Record<string, MirrorState> }>(`mirrored?${q}`).then(r => r.mirrored ?? {})
   },
+  /**
+   * Create a mirror of one repository from its upstream.
+   *
+   * Slow by nature — it creates the repository and fetches a branch into it — so the caller shows
+   * progress rather than a spinner that could be a hang.
+   */
+  establish: (repo: string) =>
+    post<{ repo: string; mirroredAs: string; branch: string; commit: string }>(
+      'establish?repo=' + encodeURIComponent(repo),
+    ),
   orgs: () => get<{ orgs: OrgSummary[]; count: number }>('orgs').then(r => r.orgs ?? []),
   whoami: () => get<{ login: string }>('whoami').then(r => r.login ?? ''),
   releases: (repo: string, limit = 20) =>

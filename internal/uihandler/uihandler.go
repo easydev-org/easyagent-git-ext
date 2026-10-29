@@ -121,6 +121,10 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 		// systems, and the panel compares them so a reader does not find out by clicking.
 		if h.Mirrored != nil {
 			mux.HandleFunc(p+"mirrored", h.mirrored)
+			// A POST: it creates a repository on the forge. Registered beside the read that says
+			// whether one exists, because they answer the same question — "is it there?" — with
+			// "no" and "make it so".
+			mux.HandleFunc(p+"establish", h.establish)
 		}
 	}
 

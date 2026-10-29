@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 // The account-level endpoints: which repositories, which organisations, and a repository's releases
@@ -130,4 +131,35 @@ func (h *Handler) mirrored(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"mirrored": set})
+}
+
+/**
+ * establish creates a mirror of one repository, from its upstream.
+ *
+ * A POST, because it changes things — it creates a repository on the forge and copies a branch into
+ * it. The panel calls it when a reader opens a repository the mirror does not have, which is the
+ * moment they have said they want it.
+ *
+ * SLOW BY NATURE: a large repository takes tens of seconds to fetch. The response says what was
+ * copied rather than only that it worked, so the page can show the commit that arrived.
+ */
+func (h *Handler) establish(w http.ResponseWriter, r *http.Request) {
+	if !h.authedAccount(w, r) {
+		return
+	}
+	repo := strings.TrimSpace(r.URL.Query().Get("repo"))
+	if repo == "" || !strings.Contains(repo, "/") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "repo (owner/name) is required"})
+		return
+	}
+	mirroredAs, branch, commit, err := h.Mirrored.Establish(r.Context(), repo)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		// THE LOCATION THE PANEL MUST NAVIGATE TO, not the one it asked about: the mirror is created
+		// under the forge account, which is not the upstream's owner.
+		"repo": repo, "mirroredAs": mirroredAs, "branch": branch, "commit": commit,
+	})
 }

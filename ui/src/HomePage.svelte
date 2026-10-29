@@ -26,6 +26,15 @@
   let org = $state('') // '' = the caller's own repositories
   let error = $state('')
   let loading = $state(true)
+  /**
+   * The repository being copied, if any.
+   *
+   * ONE AT A TIME, and the whole list is disabled while it runs: copying is a forge-side fetch of a
+   * whole branch, and ten at once would be ten concurrent clones competing for the same network.
+   */
+  let settingUp = $state<string | null>(null)
+  /** What went wrong, per repository, so the failure sits on the row that caused it. */
+  let setupErrors = $state<Record<string, string>>({})
 
   async function load(): Promise<void> {
     loading = true
@@ -70,6 +79,34 @@
   function stateOf(fullName: string): MirrorState | 'unknown' {
     if (mirrored === null) return 'unknown'
     return mirrored[fullName] ?? 'missing'
+  }
+
+  /**
+   * Copy a repository into the mirror, then open it.
+   *
+   * THE CLICK IS THE DECISION: the reader asked for this repository by clicking it, so this is the
+   * moment to create it — rather than a button they must find, or a tool they must know to call.
+   *
+   * A FAILURE STAYS ON ITS ROW. A toast would be gone before they finished reading it, and they
+   * would have to guess which of eighty rows it was about.
+   */
+  async function establish(fullName: string): Promise<void> {
+    settingUp = fullName
+    setupErrors = { ...setupErrors, [fullName]: '' }
+    try {
+      const done = await api.establish(fullName)
+      mirrored = { ...(mirrored ?? {}), [fullName]: 'ready' }
+      // `mirroredAs` IS THE ROUTE. The mirror lives under the FORGE account, so `easydev-org/x`
+      // becomes `agentdev/x` — a page built from the name we asked about would 404.
+      location.hash = '#/tree/' + done.mirroredAs
+    } catch (e) {
+      setupErrors = {
+        ...setupErrors,
+        [fullName]: e instanceof Error ? e.message : String(e),
+      }
+    } finally {
+      settingUp = null
+    }
   }
 </script>
 
@@ -125,27 +162,45 @@
             {@const st = stateOf(r.fullName)}
             <li>
               {#if st === 'missing' || st === 'empty'}
-                <!-- NOT A LINK, for two different reasons that a reader needs to tell apart:
-                     'missing' means the mirror has never heard of it, 'empty' means it was created
-                     and never filled — so it exists, is writable, and has nothing to browse. -->
-                <div
-                  class="repo disabled"
-                  title={st === 'empty' ? 'In the mirror but has no commits' : 'Not in the mirror yet'}
+                <!-- A BUTTON, not a dead row. The mirror has not got it, and the reader has just asked
+                     for it by clicking — so the click is what creates it. A row that says "not
+                     mirrored" and does nothing answers a question with a fact and no next step. -->
+                <button
+                  type="button"
+                  class="repo setup"
+                  class:busy={settingUp === r.fullName}
+                  onclick={() => void establish(r.fullName)}
+                  disabled={settingUp !== null}
+                  title={st === 'empty'
+                    ? 'In the mirror but empty — click to copy its content'
+                    : 'Click to copy it into the mirror'}
                 >
                   <span class="grow">
                     <span class="name ellipsis">
                       <span class="muted">{parts[0]}/</span>{parts[1]}
                     </span>
-                    {#if r.description}
-                      <span class="sub muted ellipsis">{r.description}</span>
-                    {/if}
+                    <span class="sub muted ellipsis">
+                      {#if settingUp === r.fullName}
+                        copying {r.defaultBranch || 'main'} from GitHub…
+                      {:else if setupErrors[r.fullName]}
+                        <span class="errtext">{setupErrors[r.fullName]}</span>
+                      {:else if r.description}
+                        {r.description}
+                      {/if}
+                    </span>
                   </span>
-                  <span class="badge {st === 'empty' ? 'empty' : 'notmirrored'}">
-                    {st === 'empty' ? 'empty in mirror' : 'not mirrored'}
-                  </span>
+                  {#if settingUp === r.fullName}
+                    <span class="badge working">copying…</span>
+                  {:else if setupErrors[r.fullName]}
+                    <span class="badge failed">failed</span>
+                  {:else}
+                    <span class="badge {st === 'empty' ? 'empty' : 'notmirrored'}">
+                      {st === 'empty' ? 'empty in mirror' : 'not mirrored'}
+                    </span>
+                  {/if}
                   {#if r.private}<span class="badge">private</span>{/if}
                   {#if r.archived}<span class="badge warn">archived</span>{/if}
-                </div>
+                </button>
               {:else}
               <a class="repo" href={`#/files/${parts[0]}/${parts[1]}`}>
                 <span class="grow">
@@ -277,13 +332,31 @@
     color: var(--warning, #9a6700);
     border-color: currentColor;
   }
-  /* Dimmed, and NOT a link: no hover, no pointer, and a title that explains. A disabled-looking row
-     that still navigates is the worst of both. */
-  .repo.disabled {
-    opacity: 0.55;
-    cursor: default;
+  /* A row that will CREATE something: it looks live, because it is. */
+  .repo.setup {
+    font: inherit;
+    text-align: left;
+    width: 100%;
+    background: none;
+    border: 0;
+    cursor: pointer;
   }
-  .repo.disabled:hover { background: none; }
+  .repo.setup:hover { background: var(--secondary); }
+  .repo.setup:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  /* While one is copying, the rest are inert: a forge-side fetch of a whole branch is not something
+     to run ten of at once. */
+  .repo.setup:disabled { cursor: default; }
+  .repo.setup:disabled:hover { background: none; }
+  .repo.busy { opacity: 1; }
+  .badge.working {
+    color: var(--primary);
+    border-color: currentColor;
+  }
+  .badge.failed {
+    color: var(--destructive, #cf222e);
+    border-color: currentColor;
+  }
+  .errtext { color: var(--destructive, #cf222e); }
 
   .state { padding: var(--sp-lg); text-align: center; }
   .state.err {

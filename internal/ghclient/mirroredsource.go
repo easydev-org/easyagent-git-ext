@@ -2,6 +2,7 @@ package ghclient
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/easydev-org/easyagent-gitdev-ext/internal/forge"
@@ -23,6 +24,9 @@ import (
 type MirroredSource struct {
 	// Cfg returns the mirror's server list for a tenant.
 	Cfg func(tenant string) forgeconfig.Config
+	// UpstreamToken returns the GITHUB token used to fetch the upstream. Separate from the mirror's
+	// own token because they are different hosts: one writes to the forge, the other reads GitHub.
+	UpstreamToken func(tenant string) string
 	// TenantFrom resolves the caller for a request.
 	TenantFrom func(ctx context.Context) (string, error)
 }
@@ -74,4 +78,65 @@ func (s *MirroredSource) Mirrored(ctx context.Context, repos []string) (map[stri
 		out[r] = uihandler.MirrorMissing
 	}
 	return out, nil
+}
+
+/**
+ * Establish creates a mirror of one repository from its upstream.
+ *
+ * THE UPSTREAM IS GITHUB, and the credentials differ on each side: the forge client holds the mirror's
+ * token and the caller's GitHub token goes to the fetch. Both come from this extension's configuration,
+ * which is why this adapter — and not the forge package — knows how to pair them.
+ *
+ * The repository is created under the FORGE ACCOUNT, not under the upstream's owner: the account that
+ * holds the token is the one that can write, and a mirror owned by an organisation the token cannot
+ * push to would be created and then unfillable.
+ */
+func (s *MirroredSource) Establish(ctx context.Context, repo string) (string, string, string, error) {
+	tenant := ""
+	if s.TenantFrom != nil {
+		t, err := s.TenantFrom(ctx)
+		if err != nil {
+			return "", "", "", err
+		}
+		tenant = t
+	}
+	cfg := s.Cfg(tenant)
+	if len(cfg.Servers) == 0 {
+		return "", "", "", fmt.Errorf("no mirror is configured, so there is nowhere to copy it to")
+	}
+	srv := cfg.Servers[0]
+	c, err := forge.NewForHost(srv.APIBase(), srv.Token)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	repo = strings.Trim(repo, "/")
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return "", "", "", fmt.Errorf("repo must be owner/name, got %q", repo)
+	}
+
+	// The mirror's repository NAME is the upstream's name: the panel's routes and the tools all key
+	// on it, and a prefixed copy would make the mirror unrecognisable as the thing it mirrors.
+	upstream := "https://github.com/" + repo + ".git"
+	upTok := ""
+	if s.UpstreamToken != nil {
+		upTok = strings.TrimSpace(s.UpstreamToken(tenant))
+	}
+	branch, commit, err := c.Establish(ctx, name, upstream, "main", upTok)
+	if err != nil {
+		return "", "", "", err
+	}
+	// The mirror lives under the FORGE ACCOUNT, not the upstream's owner. The caller needs that name to
+	// build a route, so it is returned rather than left to be guessed: `agentdev/easyagent` and
+	// `easydev-org/easyagent` are different repositories, and only one of them exists here.
+	//
+	// The account is whoever the forge token belongs to, which the client can name.
+	who, werr := c.WhoAmI(ctx)
+	if werr != nil || who == "" {
+		// A name we could not read is not a reason to fail an operation that succeeded; the caller
+		// falls back to the upstream owner and the page reports what it finds.
+		return owner + "/" + name, branch, commit, nil
+	}
+	return who + "/" + name, branch, commit, nil
 }

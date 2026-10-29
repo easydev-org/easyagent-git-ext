@@ -311,6 +311,15 @@ func main() {
 					return forgeconfig.Config{Servers: servers}
 				},
 				TenantFrom: uihandler.TenantFromContext,
+				// The GITHUB token, for fetching the upstream when a mirror is established. The
+				// mirror's own token is in `servers`; this one reads GitHub.
+				UpstreamToken: func(tenant string) string {
+					if ext == nil {
+						return ""
+					}
+					s, _ := ext.GetConfig(tenant, "token", "").(string)
+					return s
+				},
 			},
 			mirrorForge(ext),
 		),

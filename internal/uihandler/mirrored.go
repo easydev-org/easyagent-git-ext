@@ -16,6 +16,12 @@ import "context"
 type MirroredSource interface {
 	// Mirrored reports each repository's state in the mirror.
 	Mirrored(ctx context.Context, repos []string) (map[string]MirrorState, error)
+	// Establish creates a mirror of `repo` (owner/name) from its upstream.
+	//
+	// Returns WHERE it landed and what was copied. The location matters: the mirror is created under
+	// the FORGE account, which is not the upstream's owner, so a caller that assumed the names matched
+	// would navigate to a repository that does not exist.
+	Establish(ctx context.Context, repo string) (mirroredAs string, branch string, commit string, err error)
 }
 
 // MirrorState is what the mirror has for one repository.
