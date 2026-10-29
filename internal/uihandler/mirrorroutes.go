@@ -63,14 +63,30 @@ func (h *Handler) tree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	entries, err := c.ListDir(r.Context(), q.Get("dir"), q.Get("ref"))
+	// THE PARAMETER IS `branch`, because that is what the panel has and what a reader thinks in. The
+	// forge calls the same thing a `ref` — a branch, tag or commit — and accepting only that name
+	// meant the panel's own requests listed the DEFAULT branch no matter which one was selected.
+	ref := q.Get("branch")
+	if ref == "" {
+		ref = q.Get("ref")
+	}
+	entries, err := c.ListDir(r.Context(), q.Get("dir"), ref)
 	if err != nil {
 		writeForgeErr(w, err)
 		return
 	}
+	// THE FIELD NAMES ARE LOWERCASE, matching what the panel reads. forge.DirEntry has no JSON tags,
+	// so marshalling it produced `Path`/`Name`/`Dir` — the tree rendered EMPTY against data that was
+	// correct and present, which is the kind of failure that looks like "the repository is empty".
+	rows := make([]map[string]any, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, map[string]any{
+			"path": e.Path, "name": e.Name, "dir": e.Dir, "size": e.Size,
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"dir": strings.Trim(q.Get("dir"), "/"), "ref": q.Get("ref"),
-		"entries": entries, "count": len(entries),
+		"dir": strings.Trim(q.Get("dir"), "/"), "branch": ref,
+		"entries": rows, "count": len(rows),
 	})
 }
 
@@ -86,13 +102,17 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request) {
 		writeMirrorErr(w, http.StatusBadRequest, "path is required")
 		return
 	}
-	f, err := c.ReadFile(r.Context(), path, q.Get("ref"))
+	ref := q.Get("branch")
+	if ref == "" {
+		ref = q.Get("ref")
+	}
+	f, err := c.ReadFile(r.Context(), path, ref)
 	if err != nil {
 		writeForgeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path": f.Path, "revision": f.Revision, "content": f.Content, "size": f.Size,
+		"path": f.Path, "branch": ref, "revision": f.Revision, "content": f.Content, "size": f.Size,
 	})
 }
 
