@@ -53,7 +53,17 @@ func (h *Handler) refs(w http.ResponseWriter, r *http.Request) {
 		writeForgeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"refs": refs, "count": len(refs)})
+	// LOWERCASE FIELD NAMES, mapped explicitly. forge.Ref has no JSON tags, so marshalling it emits
+	// `Name`/`Commit`/`Kind` — and the panel reads `name`/`kind`. The same mistake as the directory
+	// listing a few commits ago: a shared struct's serialisation is not the panel's contract, and
+	// relying on it makes the panel's contract a side effect of a type it does not own.
+	rows := make([]map[string]any, 0, len(refs))
+	for _, ref := range refs {
+		rows = append(rows, map[string]any{
+			"name": ref.Name, "commit": ref.Commit, "kind": ref.Kind,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"refs": rows, "count": len(rows)})
 }
 
 // tree lists one directory.

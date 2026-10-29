@@ -34,10 +34,13 @@ var ErrUnsupported = errors.New("this tool reads repositories over the Gitea/For
 
 // Ref is one branch or tag of a remote repository.
 type Ref struct {
-	Name   string
-	Commit string
+	// The JSON tags are lowercase because this struct is serialised to a BROWSER, whose fields are
+	// lowercase. Without them Go emits `Name`/`Kind` and every client reads `undefined` — which
+	// fails silently as an empty list rather than as an error.
+	Name   string `json:"name"`
+	Commit string `json:"commit"`
 	// Kind is "branch" or "tag".
-	Kind string
+	Kind string `json:"kind"`
 }
 
 // File is one remote file's content plus the revision it came from.
