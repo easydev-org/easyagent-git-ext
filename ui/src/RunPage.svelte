@@ -19,8 +19,15 @@
   let loading = $state(true)
   let timer: ReturnType<typeof setTimeout> | null = null
 
-  // Which job's log is open, and its text per job id — kept so re-opening does not refetch.
-  let openLog = $state<number | null>(null)
+  /**
+   * Which jobs' logs are open — a SET, not one id.
+   *
+   * ONE AT A TIME WAS WRONG. Reading a failed CI run is usually a comparison — "did unit fail
+   * before ui did?" — and a panel that closed the first log when the second opened made that
+   * impossible. Each job has its own button and its own box directly under it; opening one no longer
+   * closes another.
+   */
+  let openLogs = $state<Set<number>>(new Set())
   let logs = $state<Record<number, string>>({})
   let logError = $state<Record<number, string>>({})
   let logLoading = $state<number | null>(null)
@@ -57,13 +64,20 @@
     if (timer) clearTimeout(timer)
   })
 
-  /** Toggle one job's log, fetching it the first time it is opened. */
+  /** Toggle one job's log. Independent of every other job's. */
   async function toggleLog(job: JobView): Promise<void> {
-    if (openLog === job.id) {
-      openLog = null
+    // A NEW Set each time: mutating the existing one would not notify Svelte, because the reference
+    // has not changed.
+    const next = new Set(openLogs)
+    if (next.has(job.id)) {
+      next.delete(job.id)
+      openLogs = next
       return
     }
-    openLog = job.id
+    next.add(job.id)
+    openLogs = next
+
+    // Already fetched, or already known to have no log: nothing more to do.
     if (logs[job.id] !== undefined || logError[job.id]) return
     logLoading = job.id
     try {
@@ -75,6 +89,35 @@
       logError = { ...logError, [job.id]: e instanceof Error ? e.message : String(e) }
     } finally {
       logLoading = null
+    }
+  }
+
+  /** How many jobs could be opened at all — used to decide whether "open all" is worth showing. */
+  const openableJobs = $derived(jobs.filter(j => j.logAvailable))
+
+  /** Open every finished job's log, or close them all if they are all already open. */
+  async function toggleAll(): Promise<void> {
+    const allOpen = openableJobs.length > 0 && openableJobs.every(j => openLogs.has(j.id))
+    if (allOpen) {
+      openLogs = new Set()
+      return
+    }
+    const next = new Set(openLogs)
+    for (const j of openableJobs) next.add(j.id)
+    openLogs = next
+    // Fetch the ones that are missing, one at a time — in parallel they would all hit the rate limit
+    // at once, and the reader is looking at the first one anyway.
+    for (const j of openableJobs) {
+      if (logs[j.id] === undefined && !logError[j.id]) {
+        logLoading = j.id
+        try {
+          logs = { ...logs, [j.id]: await api.jobLog(repo, j.id) }
+        } catch (e) {
+          logError = { ...logError, [j.id]: e instanceof Error ? e.message : String(e) }
+        } finally {
+          logLoading = null
+        }
+      }
     }
   }
 
@@ -159,31 +202,48 @@
       {#if jobs.length === 0}
         <div class="muted">This run has no jobs yet.</div>
       {:else}
+        {#if openableJobs.length > 1}
+          <!-- Only worth offering when there IS more than one log: a "expand all" with one item is
+               a control that does what the row already does. -->
+          <div class="jobs-bar">
+            <span class="muted t-micro">
+              {jobs.length} job{jobs.length === 1 ? '' : 's'}
+            </span>
+            <button type="button" class="allbtn" onclick={() => void toggleAll()}>
+              {openableJobs.every(j => openLogs.has(j.id)) ? 'Hide all logs' : 'Show all logs'}
+            </button>
+          </div>
+        {/if}
         <ul class="jobs">
           {#each jobs as j (j.id)}
             {@const pg = progress(j)}
+            {@const opened = openLogs.has(j.id)}
             <li class="job">
-              <div class="job-head">
+              <!-- THE WHOLE ROW IS THE CONTROL, and the chevron is its affordance. A dedicated
+                   button at the right edge is a small target next to a large one that looks live;
+                   making the row clickable means a reader who clicks the job's NAME gets the log,
+                   which is what they were reaching for. -->
+              <button
+                type="button"
+                class="job-head"
+                onclick={() => j.logAvailable && void toggleLog(j)}
+                disabled={!j.logAvailable}
+                aria-expanded={j.logAvailable ? opened : undefined}
+              >
+                <span class="chev" class:open={opened} aria-hidden="true">
+                  {j.logAvailable ? '▸' : '·'}
+                </span>
                 <span class="badge {tone(j)}">{stateOf(j)}</span>
                 <span class="job-name grow ellipsis">{j.name}</span>
                 {#if pg.total > 0}
                   <span class="muted t-micro nowrap">{pg.done}/{pg.total}</span>
                 {/if}
-                {#if j.logAvailable}
-                  <button
-                    type="button"
-                    class="logbtn"
-                    onclick={() => void toggleLog(j)}
-                    aria-expanded={openLog === j.id}
-                  >
-                    {openLog === j.id ? 'Hide log' : 'Show log'}
-                  </button>
-                {:else}
-                  <!-- No button for a job that has none: a control that cannot work is worse than
-                       the absence of one. -->
+                {#if !j.logAvailable}
+                  <!-- Said in place of the chevron-less row: a job still running HAS no log, and a
+                       row that looks expandable but does nothing is worse than one that explains. -->
                   <span class="muted t-micro nowrap">log after it finishes</span>
                 {/if}
-              </div>
+              </button>
 
               {#if (j.steps ?? []).length > 0}
                 <ol class="steps">
@@ -199,7 +259,7 @@
                 </ol>
               {/if}
 
-              {#if openLog === j.id}
+              {#if opened}
                 <div class="log">
                   {#if logLoading === j.id}
                     <div class="muted">Loading log…</div>
@@ -274,25 +334,62 @@
     padding: var(--sp-sm);
     background: var(--card);
   }
-  .job-head { display: flex; align-items: center; gap: var(--sp-sm); min-width: 0; }
-  .job-name { font-weight: 600; font-size: var(--text-body, 14px); }
-  .grow { flex: 1 1 auto; min-width: 0; }
-  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .nowrap { white-space: nowrap; }
-
-  .logbtn {
+  .jobs-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--sp-sm);
+    margin-bottom: var(--sp-xs, 4px);
+  }
+  .allbtn {
     font: inherit;
     font-size: var(--text-micro, 11px);
-    padding: 4px 10px;
-    flex: 0 0 auto;
+    padding: 3px 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--background);
     color: var(--foreground);
     cursor: pointer;
   }
-  .logbtn:hover { background: var(--secondary); }
-  .logbtn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .allbtn:hover { background: var(--secondary); }
+  .allbtn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  /* The whole row is the button: it is the largest target and the one a reader aims at when they
+     click a job's name. Styled to look like a row, not like the UA's default button. */
+  .job-head {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    min-width: 0;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .job-head:hover .job-name { text-decoration: underline; }
+  .job-head:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: var(--radius-sm); }
+  /* A job with no log is not a control: it says why and does nothing. */
+  .job-head:disabled { cursor: default; }
+  .job-head:disabled:hover .job-name { text-decoration: none; }
+
+  /* The chevron is the affordance. Rotating it rather than swapping the glyph keeps the row's width
+     stable, which stops the name from shifting when a log opens. */
+  .chev {
+    flex: 0 0 auto;
+    width: 1em;
+    color: var(--muted-foreground);
+    transition: transform 0.12s ease;
+  }
+  .chev.open { transform: rotate(90deg); }
+
+  .job-name { font-weight: 600; font-size: var(--text-body, 14px); }
+  .grow { flex: 1 1 auto; min-width: 0; }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nowrap { white-space: nowrap; }
 
   .steps { list-style: none; margin: var(--sp-sm) 0 0; padding: 0 0 0 2px; display: flex; flex-direction: column; gap: 3px; }
   .step { display: flex; align-items: center; gap: var(--sp-sm); font-size: var(--text-meta, 12px); min-width: 0; }

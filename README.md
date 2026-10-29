@@ -38,6 +38,7 @@ Mounted at `/ext/gitdev/` and reachable from the host's extension shelf. Six rou
 
 | Route | What it shows |
 |---|---|
+| `#/` | **the door**: repositories you can see, with organisations as tabs |
 | `#/files/<owner>/<name>?branch=&dir=` | the mirror's files: tree, file contents, branch switch |
 | `#/pulls/<owner>/<name>` | open pull requests |
 | `#/pull/<owner>/<name>/<n>` | one pull request: files, diff, CI |
@@ -45,11 +46,32 @@ Mounted at `/ext/gitdev/` and reachable from the host's extension shelf. Six rou
 | `#/issue/<owner>/<name>/<n>` | one issue: body and conversation |
 | `#/runs/<owner>/<name>` | recent CI runs |
 | `#/run/<owner>/<name>/<id>` | one run: jobs, steps, and **logs on demand** |
+| `#/releases/<owner>/<name>` | releases, with their notes |
+| `#/workflows/<owner>/<name>` | the workflow DEFINITIONS, not their runs |
 | `#/card/<template>` | one tool result, embedded in a conversation |
 
 A tool result carries a `view`, so a card offers a button that opens the page for the thing the
 result was about. The route is built by the tool, because only it knows which repository the result
 came from.
+
+### Two levels of navigation
+
+```
+#/                       repositories            <- where a reader starts
+#/files/o/n  ...         one repository          <- the six tabs
+```
+
+The bar names the repository and offers Files, Pulls, Issues, CI, Releases, Workflows, plus a `<-`
+back to the list. **The back arrow is not decoration**: every page below it names a repository, so
+without it choosing one was a one-way trip.
+
+**A page error renders INSIDE the frame.** It used to replace the whole page, which took the bar with
+it — a reader whose repository failed to load was left on a line of text with no way back. A failure
+of the content must not remove the navigation.
+
+**Headers do not shrink.** Every page here is a column whose other child is a scrolling list, and a
+flex child shrinks by default — so a header without `flex: 0 0 auto` gets squashed as the list takes
+the space, and its text clips instead of the layout scrolling. All eight page headers say it.
 
 ### Decisions worth knowing before changing it
 
