@@ -258,6 +258,17 @@ export const api = {
   // the panel can show them anything about a repository.
   repos: (org = '') =>
     get<{ repos: RepoSummary[]; count: number }>('repos', { org }).then(r => r.repos ?? []),
+  /**
+   * Which of these repositories the MIRROR has.
+   *
+   * The home page lists GITHUB's repositories and the Files page reads the MIRROR's; they are
+   * different systems with different contents. Asking once for the whole page is what lets a row
+   * say "not mirrored" instead of 404ing when clicked.
+   */
+  mirrored: (repos: string[]) => {
+    const q = repos.map(r => 'repo=' + encodeURIComponent(r)).join('&')
+    return get<{ mirrored: Record<string, boolean> }>(`mirrored?${q}`).then(r => r.mirrored ?? {})
+  },
   orgs: () => get<{ orgs: OrgSummary[]; count: number }>('orgs').then(r => r.orgs ?? []),
   whoami: () => get<{ login: string }>('whoami').then(r => r.login ?? ''),
   releases: (repo: string, limit = 20) =>

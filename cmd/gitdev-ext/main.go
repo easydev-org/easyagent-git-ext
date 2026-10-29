@@ -48,7 +48,7 @@ const uiBase = "/ext/gitdev"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ver, agentURL string, pulls uihandler.PullSource, issues uihandler.IssueSource, runs uihandler.RunSource, browse uihandler.BrowseSource, forgeFor uihandler.MirrorForgeFunc) http.Handler {
+func uiMux(ver, agentURL string, pulls uihandler.PullSource, issues uihandler.IssueSource, runs uihandler.RunSource, browse uihandler.BrowseSource, mirrored uihandler.MirroredSource, forgeFor uihandler.MirrorForgeFunc) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -69,6 +69,7 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource, issues uihandler.Is
 		Issues: issues,
 		Runs: runs,
 		Browse: browse,
+		Mirrored: mirrored,
 		// The MIRROR's pages. Same shape as Pulls: a function resolved per request, because the
 		// token and the server list live in configuration and can change while this pod runs.
 		Forge: forgeFor,
@@ -291,6 +292,23 @@ func main() {
 					}
 					s, _ := ext.GetConfig(tenant, "token", "").(string)
 					return s
+				},
+				TenantFrom: uihandler.TenantFromContext,
+			},
+			// WHICH OF THOSE THE MIRROR HAS. The home page lists GitHub's repositories and the Files
+			// page reads the mirror's, and until this nothing compared the two — a reader found out
+			// by clicking a row that 404ed.
+			&ghclient.MirroredSource{
+				Cfg: func(tenant string) forgeconfig.Config {
+					if ext == nil {
+						return forgeconfig.Config{}
+					}
+					raw, _ := ext.GetConfig(tenant, "servers", "").(string)
+					servers, err := forgeconfig.ParseServers(raw)
+					if err != nil {
+						return forgeconfig.Config{}
+					}
+					return forgeconfig.Config{Servers: servers}
 				},
 				TenantFrom: uihandler.TenantFromContext,
 			},

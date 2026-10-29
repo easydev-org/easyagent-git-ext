@@ -11,6 +11,17 @@
 
   let repos = $state<RepoSummary[]>([])
   let orgs = $state<OrgSummary[]>([])
+  /**
+   * Which of these repositories the MIRROR has.
+   *
+   * GITHUB AND THE MIRROR ARE DIFFERENT SYSTEMS WITH DIFFERENT CONTENTS. This list comes from GitHub
+   * — what you can see — and the Files page reads the mirror — what you can change. Without this,
+   * a row looked clickable and 404ed, which reads as a broken panel rather than as "not copied yet".
+   *
+   * `null` while the check is in flight: rows are shown normally and become marked when it lands,
+   * rather than the whole list waiting on a second request.
+   */
+  let mirrored = $state<Record<string, boolean> | null>(null)
   let login = $state('')
   let org = $state('') // '' = the caller's own repositories
   let error = $state('')
@@ -28,6 +39,12 @@
       repos = r
       orgs = o
       error = ''
+      // Asked for AFTER the list is shown, and never blocking it: the list is the answer to the
+      // question the reader asked, and whether a row is mirrored is an annotation on it.
+      void api
+        .mirrored(r.map(x => x.fullName))
+        .then(m => (mirrored = m))
+        .catch(() => (mirrored = null))
     } catch (e) {
       error = e instanceof Error ? e.message : String(e)
     } finally {
@@ -43,7 +60,16 @@
 
   function pick(o: string): void {
     org = o
+    // The previous set described the previous list; keeping it would mark the new rows with the old
+    // answers.
+    mirrored = null
     void load()
+  }
+
+  /** Whether a row can be opened, and what to say when it cannot. */
+  function stateOf(fullName: string): 'mirrored' | 'missing' | 'unknown' {
+    if (mirrored === null) return 'unknown'
+    return mirrored[fullName] ? 'mirrored' : 'missing'
   }
 </script>
 
@@ -96,7 +122,25 @@
         <ul class="repos">
           {#each repos as r (r.fullName)}
             {@const parts = r.fullName.split('/')}
+            {@const st = stateOf(r.fullName)}
             <li>
+              {#if st === 'missing'}
+                <!-- NOT A LINK. The mirror does not have it, so following it would 404 — and a
+                     dead link is worse than a row that says why. -->
+                <div class="repo disabled" title="Not in the mirror yet">
+                  <span class="grow">
+                    <span class="name ellipsis">
+                      <span class="muted">{parts[0]}/</span>{parts[1]}
+                    </span>
+                    {#if r.description}
+                      <span class="sub muted ellipsis">{r.description}</span>
+                    {/if}
+                  </span>
+                  <span class="badge notmirrored">not mirrored</span>
+                  {#if r.private}<span class="badge">private</span>{/if}
+                  {#if r.archived}<span class="badge warn">archived</span>{/if}
+                </div>
+              {:else}
               <a class="repo" href={`#/files/${parts[0]}/${parts[1]}`}>
                 <span class="grow">
                   <span class="name ellipsis">
@@ -106,10 +150,14 @@
                     <span class="sub muted ellipsis">{r.description}</span>
                   {/if}
                 </span>
+                {#if st === 'unknown'}
+                  <span class="badge muted">…</span>
+                {/if}
                 {#if r.private}<span class="badge">private</span>{/if}
                 {#if r.archived}<span class="badge warn">archived</span>{/if}
                 {#if r.fork}<span class="badge muted">fork</span>{/if}
               </a>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -211,6 +259,19 @@
   }
   .badge.warn { color: var(--warning, #9a6700); border-color: currentColor; }
   .badge.muted { opacity: 0.7; }
+  /* The row that cannot be opened says so quietly. Loud enough to be seen before the click, not so
+     loud that a page of mostly-unmirrored repositories reads as an error state. */
+  .badge.notmirrored {
+    color: var(--muted-foreground);
+    border-style: dashed;
+  }
+  /* Dimmed, and NOT a link: no hover, no pointer, and a title that explains. A disabled-looking row
+     that still navigates is the worst of both. */
+  .repo.disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .repo.disabled:hover { background: none; }
 
   .state { padding: var(--sp-lg); text-align: center; }
   .state.err {

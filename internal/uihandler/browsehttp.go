@@ -98,3 +98,36 @@ func (h *Handler) workflows(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workflows": list, "count": len(list)})
 }
+
+/**
+ * mirrored reports which of the named repositories exist in the MIRROR.
+ *
+ * IT TAKES `repos` AS A REPEATED QUERY PARAMETER, so the home page can ask about everything it is
+ * showing in one request. Asking per row would be eighty round trips to the forge for a page a reader
+ * scrolls in two seconds.
+ *
+ * A repository that cannot be checked is reported as NOT mirrored rather than as an error: the
+ * answer's job is to tell a reader which rows are clickable, and a whole page that fails because one
+ * name was odd would be worse than one row marked wrong.
+ */
+func (h *Handler) mirrored(w http.ResponseWriter, r *http.Request) {
+	if !h.authedAccount(w, r) {
+		return
+	}
+	repos := r.URL.Query()["repo"]
+	if len(repos) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"mirrored": map[string]bool{}})
+		return
+	}
+	// Bounded: the page shows tens, and an unbounded list would let one request ask the forge about
+	// thousands.
+	if len(repos) > 200 {
+		repos = repos[:200]
+	}
+	set, err := h.Mirrored.Mirrored(r.Context(), repos)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"mirrored": set})
+}

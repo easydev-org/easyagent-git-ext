@@ -37,6 +37,9 @@ type Handler struct {
 	// Browse reads the ACCOUNT-level view: which repositories and organisations exist, and a
 	// repository's releases and workflows. Optional: without it the panel has no starting page.
 	Browse BrowseSource
+	// Mirrored answers which repositories the MIRROR has. Optional: without it the home page cannot
+	// tell a clickable row from one that would 404.
+	Mirrored MirroredSource
 	// Forge builds a client for one MIRROR repository in the caller's scope. Optional: a deployment
 	// with no mirror configured has no file-browsing pages.
 	//
@@ -114,6 +117,11 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 		mux.HandleFunc(p+"whoami", h.whoami)
 		mux.HandleFunc(p+"releases", h.releases)
 		mux.HandleFunc(p+"workflows", h.workflows)
+		// Which of those repositories the mirror actually has — the two sources are different
+		// systems, and the panel compares them so a reader does not find out by clicking.
+		if h.Mirrored != nil {
+			mux.HandleFunc(p+"mirrored", h.mirrored)
+		}
 	}
 
 	// The MIRROR's own pages: browse the repository a change is being made in.

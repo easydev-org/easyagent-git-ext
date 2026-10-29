@@ -69,6 +69,31 @@ type Client struct {
 //
 // `baseURL` is the Gitea origin (scheme + host, optionally a sub-path); the SDK
 // appends /api/v1 itself. An empty token reads public repositories anonymously.
+/**
+ * NewForHost builds a client for the FORGE, not for one repository on it.
+ *
+ * Some calls are above a repository — listing them all, creating an organisation — and they need a
+ * base URL and a credential but no owner/repo. Passing a placeholder remote through New would work
+ * and would be a lie: every error and every log line would name a repository that does not exist.
+ */
+func NewForHost(baseURL, token string) (*Client, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, ErrUnsupported
+	}
+	opts := []gitea.ClientOption{}
+	if t := strings.TrimSpace(token); t != "" {
+		opts = append(opts, gitea.SetToken(t))
+	}
+	c, err := gitea.NewClient(strings.TrimRight(baseURL, "/"), opts...)
+	if err != nil {
+		return nil, fmt.Errorf("gitea client for %q: %w", baseURL, err)
+	}
+	return &Client{
+		c: c,
+		apiBase: strings.TrimRight(baseURL, "/") + "/api/v1", token: strings.TrimSpace(token),
+	}, nil
+}
+
 func New(baseURL, token, remoteURL string) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, ErrUnsupported
