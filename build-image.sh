@@ -6,7 +6,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REGISTRY="${REGISTRY:-git.agent.svc.cluster.local}"
 NAMESPACE="${NAMESPACE:-easyagent}"
-NAME="${NAME:-github-ext}"
+NAME="${NAME:-gitdev-ext}"
 TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
 DEST="${REGISTRY}/${NAMESPACE}/${NAME}:${TAG}"
 BUILDKIT="${BUILDKIT_ADDR:-tcp://buildkitd.temp.svc.cluster.local:1234}"

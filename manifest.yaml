@@ -2,7 +2,7 @@ id: gitdev
 version: 1.0
 lifecycle: [deleted]
 
-# git-ext: the mirror and GitHub, because "change the code and land it" is one job.
+# gitdev-ext: the mirror and GitHub, because "change the code and land it" is one job.
 #
 # GITHUB IS THE AUTHORITY. What is merged, reviewed and released lives there.
 #

@@ -48,16 +48,16 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 # go:embed cannot reach outside the package directory, so the built UI is placed where
-# cmd/github-ext/ui declares it. See the //go:embed directive in main.go.
-COPY --from=ui /ui/dist ./cmd/github-ext/ui
+# cmd/gitdev-ext/ui declares it. See the //go:embed directive in main.go.
+COPY --from=ui /ui/dist ./cmd/gitdev-ext/ui
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/github-ext ./cmd/github-ext
+    CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/gitdev-ext ./cmd/gitdev-ext
 
 FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
-COPY --from=build /out/github-ext /app/github-ext
+COPY --from=build /out/gitdev-ext /app/gitdev-ext
 
 # Workspaces are git checkouts on this pod's LOCAL disk. No database, no volume:
 #
@@ -69,4 +69,4 @@ COPY --from=build /out/github-ext /app/github-ext
 # WORKSPACE_IDLE_TTL means an abandoned checkout does not accumulate until the disk fills.
 ENV WORKSPACE_ROOT=/tmp/workspaces
 ENV WORKSPACE_IDLE_TTL=2h
-ENTRYPOINT ["/app/github-ext"]
+ENTRYPOINT ["/app/gitdev-ext"]
