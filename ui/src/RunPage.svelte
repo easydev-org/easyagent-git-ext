@@ -104,6 +104,27 @@
     const done = steps.filter(s => s.status === 'completed' || s.conclusion !== '').length
     return { done, total: steps.length }
   }
+
+  /**
+   * Render a job log as lines, dropping GitHub's own markers.
+   *
+   * `##[group]` / `##[endgroup]` are instructions to GitHub's own log viewer, not content. Shown
+   * raw they are noise in the middle of the thing the reader came to read — and a build log is
+   * already dense enough.
+   *
+   * The timestamp is SPLIT OFF into its own span so it can be dimmed: every line starts with one, so
+   * at full contrast the eye lands on thirty identical timestamps before finding a line of output.
+   */
+  function logLines(text: string): { ts: string; body: string }[] {
+    return text
+      .split('\n')
+      .filter(l => l !== '' && !l.includes('##[group]') && !l.includes('##[endgroup]'))
+      .map(l => {
+        // ISO-8601 with a trailing Z, which is what the runner emits.
+        const m = l.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s(.*)$/)
+        return m ? { ts: m[1], body: m[2] } : { ts: '', body: l }
+      })
+  }
 </script>
 
 {#if error}
@@ -184,7 +205,13 @@
                   {:else if logs[j.id] === ''}
                     <div class="muted">(this job produced no output)</div>
                   {:else}
-                    <pre class="pre">{logs[j.id]}</pre>
+                    <div class="pre">
+                      {#each logLines(logs[j.id]) as line, i (i)}
+                        <div class="line">
+                          {#if line.ts}<span class="ts">{line.ts}</span>{/if}<span class="body">{line.body}</span>
+                        </div>
+                      {/each}
+                    </div>
                   {/if}
                 </div>
               {/if}
@@ -282,8 +309,27 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: var(--text-micro, 11px);
     line-height: 1.5;
-    white-space: pre;
   }
+  /* WRAPPED, not scrolling sideways. A build log has long paths and URLs; a horizontal scrollbar
+     inside a vertically scrolling box means the reader has to move in two directions to read one
+     message, and the second one is the one they forget is there.
+
+     `pre-wrap` keeps the significant whitespace that makes a log readable — indentation, aligned
+     columns — while still breaking a line that would otherwise overflow. */
+  .line {
+    display: flex;
+    gap: var(--sp-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* Dimmed: EVERY line starts with a timestamp, so at full contrast the eye lands on thirty
+     identical numbers before it finds a line of output. */
+  .ts {
+    flex: 0 0 auto;
+    color: var(--muted-foreground);
+    opacity: 0.75;
+  }
+  .body { flex: 1 1 auto; min-width: 0; }
 
   .badge {
     flex: 0 0 auto;
