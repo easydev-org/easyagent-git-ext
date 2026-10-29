@@ -1,9 +1,11 @@
 <script lang="ts">
-  // One file, rendered the way its TYPE wants: Markdown as a document, everything else as
-  // highlighted source. A README opened as raw text with `#` and `|` pipes is technically the file,
-  // and useless.
+  // One file as SOURCE, in a box.
+  //
+  // NOTHING IS RENDERED, Markdown included. This is a VIEWER of what is in the repository: a README
+  // shows its `#` and its pipes because those are the bytes, and a reader looking at a file wants to
+  // see the file. Rendering it turns a check of "what does the commit contain" into a display of
+  // "what would this look like", which is a different question and answers none of the edits.
   import { highlight, langOf } from './highlight'
-  import { decorateLinks, renderMarkdown } from './markdown'
   import { theme } from './theme.svelte'
 
   let {
@@ -16,11 +18,9 @@
   } = $props()
 
   let html = $state<string | null>(null)
-  let mdRoot = $state<HTMLElement | null>(null)
   let rendering = $state(false)
 
   const lang = $derived(file ? langOf(file.path) : '')
-  const isMarkdown = $derived(lang === 'markdown')
 
   // Re-render on every change of file, theme or kind. `theme.mode` is a dependency on purpose:
   // Shiki bakes colours into the HTML, so a theme switch has to re-render rather than restyle.
@@ -29,8 +29,6 @@
     const dark = theme.mode === 'dark'
     html = null
     if (!f || f.binary || f.content == null) return
-
-    if (isMarkdown) return // handled by the markup below, not by Shiki
 
     let stale = false
     rendering = true
@@ -47,10 +45,6 @@
     }
   })
 
-  // Markdown links must open outside the panel, and only after the HTML is in the DOM.
-  $effect(() => {
-    if (mdRoot && file && isMarkdown && file.content != null) decorateLinks(mdRoot)
-  })
 </script>
 
 {#if !file}
@@ -70,17 +64,27 @@
     <div class="state muted">Binary file — not shown.</div>
   {:else if file.content == null}
     <div class="state muted">No content.</div>
-  {:else if isMarkdown}
-    <!-- `{@html}` of SANITIZED html: see markdown.ts. The sanitizer is what makes this safe, not the
-         source being a repository file. -->
-    <div class="md" bind:this={mdRoot}>{@html renderMarkdown(file.content)}</div>
-  {:else if html}
-    <div class="shiki">{@html html}</div>
   {:else}
-    <!-- While highlighting loads, and for languages Shiki does not have: the plain file. Showing it
-         immediately means the content is readable before the grammar arrives. -->
-    <pre class="mono code">{file.content}</pre>
-    {#if rendering}<div class="t-micro muted hint">highlighting…</div>{/if}
+    <!-- THE BOX. One container for every file, highlighted or not, because it is the thing that says
+         "this is a file and not the page": it sets the content apart, gives it an edge to scroll
+         against, and gives the reader somewhere to select from without dragging across the layout. -->
+    <div class="codebox">
+      {#if html}
+        <!-- Shiki's output, with its own line numbers. -->
+        <div class="shiki">{@html html}</div>
+      {:else}
+        <!-- While the grammar loads, and for languages Shiki does not have: the plain file, numbered
+             here so the content does not jump when the highlight arrives. -->
+        <div class="plain">
+          {#each file.content.split('\n') as line, i}
+            <div class="plain-line">
+              <span class="plain-n">{i + 1}</span><span class="plain-t">{line}</span>
+            </div>
+          {/each}
+        </div>
+        {#if rendering}<div class="t-micro muted hint">highlighting…</div>{/if}
+      {/if}
+    </div>
   {/if}
 {/if}
 
@@ -110,106 +114,66 @@
   .back:hover {
     background: var(--secondary);
   }
-  .code {
-    margin: 0;
-    padding: var(--sp-md);
+  /* THE BOX. One frame for every file, highlighted or not: it is what says "this is a file, not the
+     page", gives the content an edge to scroll against, and gives a reader somewhere to select from
+     without dragging across the layout. */
+  .codebox {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    overflow: auto;
-    font-size: 12px;
-    line-height: 1.45;
-    tab-size: 4;
   }
-  .hint {
-    padding-top: 4px;
-  }
+  .hint { padding-top: 4px; }
   .state {
     padding: var(--sp-xl);
     text-align: center;
   }
 
-  /* Shiki emits its own <pre class="shiki"> with inline colours; these rules only fit it into the
-     panel's own frame. */
+  /* Shiki emits its own <pre class="shiki"> with inline colours and, via the line-number
+     transformer, a gutter of numbered spans. These rules only fit it into the box: the box owns the
+     border and the scroll, so the pre must not draw a second one. */
   .shiki :global(pre.shiki) {
     margin: 0;
-    padding: var(--sp-md);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    overflow: auto;
+    padding: var(--sp-md) var(--sp-md) var(--sp-md) 0;
+    background: none;
+    border: 0;
     font-size: 12px;
-    line-height: 1.45;
+    line-height: 1.5;
+  }
+  /* The gutter. The transformer emits a real `<span class="line-number">` at the start of each line,
+     so the styling targets it rather than a ::before with a data attribute. Right-aligned so the
+     numbers form a column, dimmed so they are findable but not read, and unselectable so a copy of
+     the file does not begin with a column of digits. */
+  .shiki :global(pre.shiki .line-number) {
+    display: inline-block;
+    width: 3.5em;
+    padding-right: 1em;
+    text-align: right;
+    color: var(--muted-foreground);
+    opacity: 0.55;
+    user-select: none;
   }
 
-  /* Markdown prose, sized for a panel rather than a page. */
-  .md {
-    line-height: 1.6;
-    word-wrap: break-word;
+  /* The unhighlighted fallback: numbered by hand so the content does not jump when Shiki lands. */
+  .plain {
+    padding: var(--sp-md) 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    tab-size: 4;
   }
-  .md :global(h1),
-  .md :global(h2),
-  .md :global(h3) {
-    margin: 1.2em 0 0.5em;
-    line-height: 1.25;
-    font-weight: 600;
-  }
-  .md :global(h1) { font-size: 1.5em; }
-  .md :global(h2) { font-size: 1.25em; }
-  .md :global(h3) { font-size: 1.1em; }
-  .md :global(> :first-child) { margin-top: 0; }
-  .md :global(p),
-  .md :global(ul),
-  .md :global(ol),
-  .md :global(blockquote),
-  .md :global(table) {
-    margin: 0 0 0.8em;
-  }
-  .md :global(ul),
-  .md :global(ol) {
-    padding-left: 1.4em;
-  }
-  .md :global(a) {
-    color: var(--primary);
-  }
-  .md :global(code) {
-    font-family: 'NotoSansMono', ui-monospace, monospace;
-    font-size: 0.92em;
-    background: var(--secondary);
-    padding: 0.1em 0.35em;
-    border-radius: 4px;
-  }
-  .md :global(pre) {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--sp-md);
-    overflow: auto;
-  }
-  .md :global(pre code) {
-    background: none;
-    padding: 0;
-  }
-  .md :global(blockquote) {
-    border-left: 3px solid var(--border);
-    padding-left: var(--sp-md);
+  .plain-line { display: flex; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .plain-n {
+    flex: 0 0 auto;
+    width: 3.5em;
+    padding-right: 1em;
+    text-align: right;
     color: var(--muted-foreground);
+    opacity: 0.6;
+    user-select: none;
   }
-  .md :global(table) {
-    border-collapse: collapse;
-    display: block;
-    overflow: auto;
-  }
-  .md :global(th),
-  .md :global(td) {
-    border: 1px solid var(--border);
-    padding: 4px 10px;
-  }
-  .md :global(img) {
-    max-width: 100%;
-  }
-  .md :global(hr) {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 1.2em 0;
-  }
+  .plain-t { flex: 1 1 auto; min-width: 0; }
 </style>

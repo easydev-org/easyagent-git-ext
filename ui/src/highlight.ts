@@ -78,7 +78,15 @@ export async function highlight(
     if (!h.getLoadedLanguages().includes(lang)) {
       await h.loadLanguage(lang as Parameters<typeof h.loadLanguage>[0])
     }
-    return h.codeToHtml(code, { lang, theme: dark ? 'github-dark' : 'github-light' })
+    // SINGULAR `Number`: the export is `transformerRenderLineNumber`. It prepends a
+    // `<span class="line-number">` to every line — a real element, not a CSS counter, so the numbers
+    // belong to the SOURCE lines rather than to the rendered rows.
+    const { transformerRenderLineNumber } = await import('@shikijs/transformers')
+    return h.codeToHtml(code, {
+      lang,
+      theme: dark ? 'github-dark' : 'github-light',
+      transformers: [transformerRenderLineNumber()],
+    })
   } catch {
     // A language id Shiki does not know, or a grammar that fails to fetch: plain text is the right
     // answer, and it is what the caller already renders.
