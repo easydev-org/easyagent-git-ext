@@ -53,29 +53,31 @@
   <div class="state muted">Loading…</div>
 {:else}
   <div class="page">
-    <header class="head">
-      <div class="title-row">
-        <span class="num mono">#{issue.number}</span>
-        <span class="badge {stateTone(issue.state)}">{issue.state}</span>
-        {#if issue.isPullRequest}
-          <!-- GitHub numbers issues and pull requests in one sequence, so this page can be reached
-               for either. Saying so lets the reader switch to the page that has the code. -->
-          <a class="badge link" href={`#/pull/${repo}/${issue.number}`}>pull request →</a>
-        {/if}
-        <h2 class="title">{issue.title}</h2>
-      </div>
-      <div class="meta">
-        {#if issue.author}<span>by {issue.author}</span>{/if}
-        {#if issue.labels?.length}
-          <span class="labels">
-            {#each issue.labels as l (l)}<span class="label">{l}</span>{/each}
-          </span>
-        {/if}
-        {#if issue.url}
-          <a class="ext" href={issue.url} target="_blank" rel="noreferrer">open on GitHub ↗</a>
-        {/if}
-      </div>
-    </header>
+    <div class="rule">
+      <header class="head">
+        <div class="title-row">
+          <span class="num mono">#{issue.number}</span>
+          <span class="badge {stateTone(issue.state)}">{issue.state}</span>
+          {#if issue.isPullRequest}
+            <!-- GitHub numbers issues and pull requests in one sequence, so this page can be reached
+                 for either. Saying so lets the reader switch to the page that has the code. -->
+            <a class="badge link" href={`#/pull/${repo}/${issue.number}`}>pull request →</a>
+          {/if}
+          <h2 class="title">{issue.title}</h2>
+        </div>
+        <div class="meta">
+          {#if issue.author}<span>by {issue.author}</span>{/if}
+          {#if issue.labels?.length}
+            <span class="labels">
+              {#each issue.labels as l (l)}<span class="label">{l}</span>{/each}
+            </span>
+          {/if}
+          {#if issue.url}
+            <a class="ext" href={issue.url} target="_blank" rel="noreferrer">open on GitHub ↗</a>
+          {/if}
+        </div>
+      </header>
+    </div>
 
     <div class="body-scroll">
       {#if issue.body}
@@ -112,7 +114,6 @@
   }
   .head {
     padding: var(--sp-md);
-    border-bottom: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     gap: var(--sp-xs, 4px);
@@ -121,6 +122,16 @@
     max-width: 68rem;
     width: 100%;
     margin: 0 auto;
+  }
+  /**
+   * THE RULE SPANS THE WINDOW, NOT THE CAP.
+   *
+   * A `border-bottom` on the capped header stops where the cap stops, so on a wide screen the
+   * separator begins and ends in mid-air — which reads as a rendering fault rather than as a
+   * division. The wrapper spans the window; the text inside it stays in its column.
+   */
+  .rule {
+    border-bottom: 1px solid var(--border);
   }
   .title-row {
     display: flex;
@@ -196,10 +207,13 @@
     margin: 0 auto;
   }
   .sec-title {
-    margin: var(--sp-sm) 0 0;
+    /* Space ABOVE only, and generous: the heading introduces the list under it, so a gap on both
+       sides would join it to the body above instead. */
+    margin: var(--sp-lg) 0 var(--sp-xs, 4px);
     font-size: var(--text-meta, 12px);
     font-weight: 600;
     color: var(--muted-foreground);
+    text-transform: none;
   }
   .comments {
     list-style: none;
