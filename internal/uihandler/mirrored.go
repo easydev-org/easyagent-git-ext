@@ -14,6 +14,23 @@ import "context"
  * per row on a page that shows eighty.
  */
 type MirroredSource interface {
-	// Mirrored reports which of the given `owner/name` repositories exist in the mirror.
-	Mirrored(ctx context.Context, repos []string) (map[string]bool, error)
+	// Mirrored reports each repository's state in the mirror.
+	Mirrored(ctx context.Context, repos []string) (map[string]MirrorState, error)
 }
+
+// MirrorState is what the mirror has for one repository.
+//
+// THREE STATES, NOT A BOOLEAN. "Exists" and "can be opened" are different: a repository created with
+// no initial commit exists, answers 200, and has no branches and no tree — so a check that only asks
+// whether it is there marks it openable and the reader gets an empty page. That is what happened to
+// the two repositories this was found on.
+type MirrorState string
+
+const (
+	// MirrorMissing: the mirror has never heard of it.
+	MirrorMissing MirrorState = "missing"
+	// MirrorEmpty: the repository exists but has no commits, so there is nothing to browse.
+	MirrorEmpty MirrorState = "empty"
+	// MirrorReady: it exists and has at least one branch.
+	MirrorReady MirrorState = "ready"
+)

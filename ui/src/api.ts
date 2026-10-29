@@ -53,6 +53,23 @@ export interface RepoSummary {
   defaultBranch: string
 }
 
+/**
+ * What the MIRROR has for a repository.
+ *
+ * THREE STATES, because "exists" and "can be opened" are different: a repository created without an
+ * initial commit is real, writable, and has no branches — so a boolean would mark it openable and the
+ * reader would land on an empty page.
+ */
+export type MirrorState = 'ready' | 'empty' | 'missing'
+
+/** One branch or tag in the mirror. */
+export interface Ref {
+  name: string
+  commit: string
+  /** "branch" or "tag" — one dropdown lists both, grouped by this. */
+  kind: string
+}
+
 export interface OrgSummary {
   login: string
   description: string
@@ -267,7 +284,7 @@ export const api = {
    */
   mirrored: (repos: string[]) => {
     const q = repos.map(r => 'repo=' + encodeURIComponent(r)).join('&')
-    return get<{ mirrored: Record<string, boolean> }>(`mirrored?${q}`).then(r => r.mirrored ?? {})
+    return get<{ mirrored: Record<string, MirrorState> }>(`mirrored?${q}`).then(r => r.mirrored ?? {})
   },
   orgs: () => get<{ orgs: OrgSummary[]; count: number }>('orgs').then(r => r.orgs ?? []),
   whoami: () => get<{ login: string }>('whoami').then(r => r.login ?? ''),
@@ -288,6 +305,9 @@ export const api = {
     get<FileBody>('file', { repo, branch, path }),
   repoInfo: (repo: string) =>
     get<{ repo: string; branches: string[]; defaultBranch: string; tags: string[] }>('repo', { repo }),
+  /** Every branch and tag, with the kind, so one dropdown can switch between both. */
+  refs: (repo: string) =>
+    get<{ refs: Ref[]; count: number }>('refs', { repo }).then(r => r.refs ?? []),
   // Pull requests. These read GitHub rather than the local checkout: a pull request is not on disk,
   // and a PAGE shows the current state where a card replays what a tool already returned.
   pull: (repo: string, number: number) => get<PullView>('pull', { repo, number: String(number) }),

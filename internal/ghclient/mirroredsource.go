@@ -6,6 +6,7 @@ import (
 
 	"github.com/easydev-org/easyagent-gitdev-ext/internal/forge"
 	"github.com/easydev-org/easyagent-gitdev-ext/internal/forgeconfig"
+	"github.com/easydev-org/easyagent-gitdev-ext/internal/uihandler"
 )
 
 /**
@@ -26,8 +27,8 @@ type MirroredSource struct {
 	TenantFrom func(ctx context.Context) (string, error)
 }
 
-// Mirrored reports which of `repos` exist in the mirror.
-func (s *MirroredSource) Mirrored(ctx context.Context, repos []string) (map[string]bool, error) {
+// Mirrored reports each of `repos`' state in the mirror.
+func (s *MirroredSource) Mirrored(ctx context.Context, repos []string) (map[string]uihandler.MirrorState, error) {
 	tenant := ""
 	if s.TenantFrom != nil {
 		t, err := s.TenantFrom(ctx)
@@ -40,7 +41,7 @@ func (s *MirroredSource) Mirrored(ctx context.Context, repos []string) (map[stri
 	if len(cfg.Servers) == 0 {
 		// No mirror configured: nothing is there, and saying so is the honest answer rather than an
 		// error that would hide every row.
-		return map[string]bool{}, nil
+		return map[string]uihandler.MirrorState{}, nil
 	}
 	srv := cfg.Servers[0]
 	// NewForHost, not New: this call is ABOVE a repository — it lists them — and a placeholder
@@ -53,13 +54,24 @@ func (s *MirroredSource) Mirrored(ctx context.Context, repos []string) (map[stri
 	if err != nil {
 		return nil, err
 	}
-	set := make(map[string]bool, len(have))
-	for _, n := range have {
-		set[strings.ToLower(strings.Trim(n, "/"))] = true
+	// A MAP OF STATES, not a set: a repository with no commits exists and cannot be browsed, and the
+	// two must not look the same on the page.
+	state := make(map[string]uihandler.MirrorState, len(have))
+	for _, r := range have {
+		key := strings.ToLower(strings.Trim(r.FullName, "/"))
+		if r.Empty {
+			state[key] = uihandler.MirrorEmpty
+			continue
+		}
+		state[key] = uihandler.MirrorReady
 	}
-	out := make(map[string]bool, len(repos))
+	out := make(map[string]uihandler.MirrorState, len(repos))
 	for _, r := range repos {
-		out[r] = set[strings.ToLower(strings.Trim(r, "/"))]
+		if st, ok := state[strings.ToLower(strings.Trim(r, "/"))]; ok {
+			out[r] = st
+			continue
+		}
+		out[r] = uihandler.MirrorMissing
 	}
 	return out, nil
 }

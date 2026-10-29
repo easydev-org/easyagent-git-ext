@@ -7,7 +7,7 @@
   // TWO LISTS, ONE SCREEN: an organisation is reached by clicking one, and its repositories replace
   // the list below. That is one level of drill-down, which is all a panel this size wants.
   import { onMount } from 'svelte'
-  import { api, type OrgSummary, type RepoSummary } from './api'
+  import { api, type MirrorState, type OrgSummary, type RepoSummary } from './api'
 
   let repos = $state<RepoSummary[]>([])
   let orgs = $state<OrgSummary[]>([])
@@ -21,7 +21,7 @@
    * `null` while the check is in flight: rows are shown normally and become marked when it lands,
    * rather than the whole list waiting on a second request.
    */
-  let mirrored = $state<Record<string, boolean> | null>(null)
+  let mirrored = $state<Record<string, MirrorState> | null>(null)
   let login = $state('')
   let org = $state('') // '' = the caller's own repositories
   let error = $state('')
@@ -67,9 +67,9 @@
   }
 
   /** Whether a row can be opened, and what to say when it cannot. */
-  function stateOf(fullName: string): 'mirrored' | 'missing' | 'unknown' {
+  function stateOf(fullName: string): MirrorState | 'unknown' {
     if (mirrored === null) return 'unknown'
-    return mirrored[fullName] ? 'mirrored' : 'missing'
+    return mirrored[fullName] ?? 'missing'
   }
 </script>
 
@@ -124,10 +124,14 @@
             {@const parts = r.fullName.split('/')}
             {@const st = stateOf(r.fullName)}
             <li>
-              {#if st === 'missing'}
-                <!-- NOT A LINK. The mirror does not have it, so following it would 404 — and a
-                     dead link is worse than a row that says why. -->
-                <div class="repo disabled" title="Not in the mirror yet">
+              {#if st === 'missing' || st === 'empty'}
+                <!-- NOT A LINK, for two different reasons that a reader needs to tell apart:
+                     'missing' means the mirror has never heard of it, 'empty' means it was created
+                     and never filled — so it exists, is writable, and has nothing to browse. -->
+                <div
+                  class="repo disabled"
+                  title={st === 'empty' ? 'In the mirror but has no commits' : 'Not in the mirror yet'}
+                >
                   <span class="grow">
                     <span class="name ellipsis">
                       <span class="muted">{parts[0]}/</span>{parts[1]}
@@ -136,7 +140,9 @@
                       <span class="sub muted ellipsis">{r.description}</span>
                     {/if}
                   </span>
-                  <span class="badge notmirrored">not mirrored</span>
+                  <span class="badge {st === 'empty' ? 'empty' : 'notmirrored'}">
+                    {st === 'empty' ? 'empty in mirror' : 'not mirrored'}
+                  </span>
                   {#if r.private}<span class="badge">private</span>{/if}
                   {#if r.archived}<span class="badge warn">archived</span>{/if}
                 </div>
@@ -264,6 +270,12 @@
   .badge.notmirrored {
     color: var(--muted-foreground);
     border-style: dashed;
+  }
+  /* A repository that IS there but has no commits: a warning rather than an absence, because the
+     fix is different — "fill it" rather than "copy it". */
+  .badge.empty {
+    color: var(--warning, #9a6700);
+    border-color: currentColor;
   }
   /* Dimmed, and NOT a link: no hover, no pointer, and a title that explains. A disabled-looking row
      that still navigates is the worst of both. */

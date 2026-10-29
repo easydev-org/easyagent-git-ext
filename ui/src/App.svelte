@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { api, type FileBody, type TreeEntry } from './api'
+  import { api, type FileBody, type Ref, type TreeEntry } from './api'
   import {
     announceReady,
     receiveCardData,
@@ -49,7 +49,12 @@
     | { kind: 'releases'; repo: string }
     | { kind: 'workflows'; repo: string }
     | { kind: 'issues'; repo: string }
-    | { kind: 'files'; repo: string; branch: string; dir: string }
+    // The mirror, as TWO pages: a tree to navigate and a file to read.
+    //
+    // They used to be one page with a rail on the left, which spent 240px of a narrow side panel on a
+    // listing most readers only pass through on the way to one file. Each now has the full width.
+    | { kind: 'tree'; repo: string; ref: string; dir: string }
+    | { kind: 'blob'; repo: string; ref: string; path: string }
 
   function parse(hash: string): Route {
     // THE QUERY IS SPLIT OFF FIRST. Splitting the whole hash on "/" left it glued to the last
@@ -99,14 +104,33 @@
       }
     }
     if (parts[0] === 'files' && parts[1] && parts[2]) {
+      // KEPT AS AN ALIAS for the shape a tool emitted before the split, so an old link lands on the
+      // tree instead of on the home page.
       return {
-        kind: 'files',
+        kind: 'tree',
         repo: `${parts[1]}/${parts[2]}`,
-        // The branch and directory ride in the query rather than the path: a branch name contains
-        // slashes (`feat/x`), which a path segment cannot carry without changing what the route
-        // means.
-        branch: q.get('branch') ?? '',
+        ref: q.get('branch') ?? q.get('ref') ?? '',
         dir: q.get('dir') ?? '',
+      }
+    }
+    // THE TREE: which rep, at which ref, in which directory. The ref and directory ride in the QUERY
+    // rather than the path because a branch name contains slashes (`feat/x`), and a path segment
+    // cannot carry one without changing what the route means.
+    if (parts[0] === 'tree' && parts[1] && parts[2]) {
+      return {
+        kind: 'tree',
+        repo: `${parts[1]}/${parts[2]}`,
+        ref: q.get('ref') ?? '',
+        dir: q.get('dir') ?? '',
+      }
+    }
+    // THE FILE: the path IS the rest of the route, because that is what it is.
+    if (parts[0] === 'blob' && parts[1] && parts[2] && parts[3]) {
+      return {
+        kind: 'blob',
+        repo: `${parts[1]}/${parts[2]}`,
+        ref: q.get('ref') ?? '',
+        path: parts.slice(3).join('/'),
       }
     }
     return { kind: 'home' }
@@ -126,7 +150,9 @@
    */
   const navFor = $derived.by(() => {
     switch (route.kind) {
-      case 'files':
+      case 'tree':
+        return { repo: route.repo, active: 'files' }
+      case 'blob':
         return { repo: route.repo, active: 'files' }
       case 'pull':
         return { repo: route.repo, active: 'pulls' }
@@ -150,12 +176,13 @@
   })
 
   let entries = $state<TreeEntry[]>([])
-  let branches = $state<string[]>([])
-  let branch = $state('')
+  /** Every ref of the current repository, branches and tags, for the switcher. */
+  let refs = $state<Ref[]>([])
+  /** The ref being browsed: a branch name or a tag name. */
+  let ref = $state('')
   let file = $state<FileBody | null>(null)
   let error = $state('')
   let loading = $state(false)
-  let narrow = $state(false)
   let cardPayload = $state<CardPayload | null>(null)
   // Where a card offers to go, when the tool that produced it named a view.
   let openTarget = $state<{ route: string; label: string; title: string } | null>(null)
@@ -164,23 +191,24 @@
     location.hash = hash
   }
 
-  /** The path of the file currently open, or '' — a nested path keeps its slashes. */
-  let openPath = $state('')
-
   async function load(r: Route): Promise<void> {
     error = ''
     loading = true
     try {
-      if (r.kind === 'files') {
-        const info = await api.repoInfo(r.repo)
-        branches = info.branches ?? []
-        // The branch defaults to the repository's own default, not to "main": not every repository
-        // uses that name, and guessing would open an empty page with no explanation.
-        branch = r.branch || info.defaultBranch || branches[0] || ''
-        if (openPath !== '') {
-          file = await api.file(r.repo, branch, openPath)
+      if (r.kind === 'tree' || r.kind === 'blob') {
+        // The refs are loaded for BOTH pages: the file page keeps the switcher, so a reader can
+        // change branch without going back to the tree first.
+        const all = await api.refs(r.repo)
+        refs = all
+        // The ref defaults to the repository's own, not to "main": not every repository uses that
+        // name, and guessing would open nothing with no explanation.
+        const firstBranch = all.find(x => x.kind === 'branch')?.name ?? ''
+        ref = r.ref || firstBranch
+        if (r.kind === 'blob') {
+          file = await api.file(r.repo, ref, r.path)
+          entries = []
         } else {
-          entries = await api.tree(r.repo, branch, r.dir)
+          entries = await api.tree(r.repo, ref, r.dir)
           file = null
         }
       } else {
@@ -199,19 +227,11 @@
   onMount(() => {
     const onHash = () => {
       const next = parse(location.hash)
-      // Opening a file from the tree keeps the branch; leaving the page clears it.
-      if (next.kind !== 'files') openPath = ''
       route = next
       void load(next)
     }
     onHash()
     window.addEventListener('hashchange', onHash)
-
-    const mq = matchMedia('(max-width: 720px)')
-    narrow = mq.matches
-    mq.addEventListener('change', (e) => {
-      narrow = (e as MediaQueryListEvent).matches
-    })
 
     announceReady()
     return () => window.removeEventListener('hashchange', onHash)
@@ -235,33 +255,38 @@
       : null
   })
 
-  /** Open one file, keeping the branch and the directory behind it. */
-  function openFile(path: string): void {
-    openPath = path
-    if (route.kind === 'files') void load(route)
+  /**
+   * Navigate the MIRROR by rewriting the hash, never by mutating state directly.
+   *
+   * One path for every move — open a directory, open a file, change ref — because each is a PLACE:
+   * the URL must say where the reader is, and a state mutation that skipped it would give a page
+   * that cannot be linked, refreshed, or reached with the back button.
+   */
+  function goTree(repo: string, refName: string, dir: string): void {
+    go('#/tree/' + repo + '?ref=' + encodeURIComponent(refName) + '&dir=' + encodeURIComponent(dir))
   }
 
-  function backToTree(): void {
-    openPath = ''
-    if (route.kind === 'files') void load(route)
-  }
-
-  /** Move to a directory, keeping the branch. Observed via the hash so the URL stays shareable. */
   function openDir(dir: string): void {
-    openPath = ''
-    if (route.kind !== 'files') return
-    go(
-      `#/files/${route.repo}?branch=${encodeURIComponent(branch)}&dir=${encodeURIComponent(dir)}`,
-    )
+    if (route.kind !== 'tree') return
+    goTree(route.repo, ref, dir)
   }
 
-  function pickBranch(b: string): void {
-    branch = b
-    openPath = ''
-    if (route.kind === 'files') {
-      go(`#/files/${route.repo}?branch=${encodeURIComponent(b)}&dir=${encodeURIComponent(route.dir)}`)
+  function openFile(path: string): void {
+    if (route.kind !== 'tree') return
+    // The ref travels with the file: opening `src/x.go` on `feat/x` must not silently read `main`.
+    go('#/blob/' + route.repo + '/' + path + '?ref=' + encodeURIComponent(ref))
+  }
+
+  function pickRef(name: string): void {
+    // Keep the reader where they are: switching ref on a file page stays on that file, and on the
+    // tree page stays in that directory.
+    if (route.kind === 'tree') {
+      goTree(route.repo, name, route.dir)
+    } else if (route.kind === 'blob') {
+      go('#/blob/' + route.repo + '/' + route.path + '?ref=' + encodeURIComponent(name))
     }
   }
+
 </script>
 
 {#if route.kind === 'card'}
@@ -310,37 +335,70 @@
         <ReleasesPage repo={route.repo} />
       {:else if route.kind === 'workflows'}
         <WorkflowsPage repo={route.repo} />
-      {:else if route.kind === 'files'}
-        <div class="layout">
-          <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a
-               rail and the content fills the rest, which is how this reads best in a side panel. -->
-          {#if !narrow || openPath === ''}
-            <aside>
-              {#if branches.length > 1}
-                <select class="branch" value={branch} onchange={(e) => pickBranch(e.currentTarget.value)}>
-                  {#each branches as b (b)}
-                    <option value={b}>{b}</option>
+      {:else if route.kind === 'tree'}
+        <!-- THE TREE PAGE. Full width, and nothing else: the rail that used to share this page with
+             the file spent 240px on a listing a reader passes through on the way to one file. -->
+        <div class="page-pad">
+          <div class="refbar">
+            <label class="reflabel" for="refsel">ref</label>
+            <select id="refsel" class="refsel" value={ref} onchange={(e) => pickRef(e.currentTarget.value)}>
+              {#if refs.length === 0}
+                <option value="">(no branches)</option>
+              {/if}
+              {#if refs.some(r => r.kind === 'branch')}
+                <optgroup label="branches">
+                  {#each refs.filter(r => r.kind === 'branch') as r (r.name)}
+                    <option value={r.name}>{r.name}</option>
                   {/each}
-                </select>
+                </optgroup>
               {/if}
-              <Tree
-                {entries}
-                dir={route.dir}
-                ws={route.repo}
-                activePath={openPath}
-                onopen={openFile}
-                ondir={openDir}
-              />
-            </aside>
+              {#if refs.some(r => r.kind === 'tag')}
+                <optgroup label="tags">
+                  {#each refs.filter(r => r.kind === 'tag') as r (r.name)}
+                    <option value={r.name}>{r.name}</option>
+                  {/each}
+                </optgroup>
+              {/if}
+            </select>
+            {#if refs.length === 0 && !loading}
+              <span class="muted t-micro">this repository has no commits</span>
+            {/if}
+          </div>
+          {#if loading}
+            <div class="state muted">Loading…</div>
+          {:else if entries.length === 0}
+            <div class="state muted">
+              {ref ? 'Empty directory.' : 'Nothing to show: this repository has no commits.'}
+            </div>
+          {:else}
+            <Tree
+              {entries}
+              dir={route.dir}
+              ws={route.repo}
+              activePath=""
+              onopen={openFile}
+              ondir={openDir}
+            />
           {/if}
-          {#if !(narrow && openPath === '')}
-            <main>
-              {#if loading}
-                <div class="state muted">Loading…</div>
-              {:else}
-                <CodePane {file} onback={narrow && openPath !== '' ? backToTree : null} />
-              {/if}
-            </main>
+        </div>
+      {:else if route.kind === 'blob'}
+        <!-- THE FILE PAGE. Also full width, with the ref switcher kept so a reader can compare the
+             same file on two branches without going back to the tree. -->
+        <div class="page-pad">
+          <div class="refbar">
+            <a class="backlink" href={ref && route.repo ? `#/tree/${route.repo}?ref=${encodeURIComponent(ref)}&dir=${encodeURIComponent(route.path.split('/').slice(0, -1).join('/'))}` : `#/tree/${route.repo}`}>
+              ← {route.repo}
+            </a>
+            <select class="refsel" value={ref} onchange={(e) => pickRef(e.currentTarget.value)}>
+              {#each refs as r (r.name)}
+                <option value={r.name}>{r.name}</option>
+              {/each}
+            </select>
+          </div>
+          {#if loading}
+            <div class="state muted">Loading…</div>
+          {:else}
+            <CodePane {file} onback={null} />
           {/if}
         </div>
       {:else}
@@ -373,32 +431,54 @@
     min-height: 0;
   }
 
-  .layout {
-    display: flex;
-    height: 100%;
-    min-height: 0;
-  }
-  aside {
-    width: 240px;
-    flex: 0 0 auto;
-    border-right: 1px solid var(--border);
-    overflow: auto;
-    padding: var(--sp-sm);
-  }
-  /* Narrow: the tree IS the page, so it takes the whole area and needs no divider. */
-  @media (max-width: 720px) {
-    aside {
-      width: 100%;
-      flex: 1 1 auto;
-      border-right: 0;
-    }
-  }
-  main {
-    flex: 1;
-    min-width: 0;
+  /* The mirror's two pages: a ref bar, then the content, both in the reader's column. */
+  .page-pad {
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    padding: var(--sp-sm) var(--sp-md) var(--sp-md);
+    max-width: 68rem;
+    width: 100%;
+    margin: 0 auto;
   }
+  .refbar {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-sm);
+    padding-bottom: var(--sp-sm);
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  .reflabel {
+    font-size: var(--text-micro, 11px);
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  /* The switcher is a select, not a menu: it is one control with N options and a browser's own
+     keyboard behaviour, which a custom dropdown would have to re-earn. */
+  .refsel {
+    font: inherit;
+    font-size: var(--text-meta, 12px);
+    padding: 4px 8px;
+    max-width: 20rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--background);
+    color: var(--foreground);
+  }
+  .refsel:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+  .backlink {
+    font-size: var(--text-meta, 12px);
+    color: var(--primary);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .backlink:hover { text-decoration: underline; }
+
   .state {
     padding: var(--sp-xl);
     text-align: center;
