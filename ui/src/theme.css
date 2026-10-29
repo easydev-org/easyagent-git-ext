@@ -91,6 +91,27 @@ body {
 }
 
 /**
+ * THE MOUNT POINT MUST ALSO FILL THE PAGE.
+ *
+ * `html` and `body` were 100% and `#app` was not, so the chain stopped one element short: the layout
+ * inside computes `height: 100%` against a parent with no height, which resolves to its CONTENT
+ * height. The panel therefore grew and shrank with its file list, and a long one pushed the page into
+ * scrolling instead of scrolling inside the pane.
+ *
+ * Invisible on a short file list — the usual thing to click — which is why it survived.
+ */
+#app {
+  height: 100%;
+  min-height: 0;
+}
+
+/* In card mode the document is as tall as its content, so the mount point must not claim the frame's
+   height either. */
+html.card-mode #app {
+  height: auto;
+}
+
+/**
  * CARD MODE: the document is as tall as its CONTENT, not as tall as the frame.
  *
  * `height: 100%` is right for the full-page UI, which fills the tab. In a card it fights the host:

@@ -19,11 +19,14 @@ const uiExtID = "gitdev"
 // It also means a card never fails the way a page can: the workspace it describes may be gone, but
 // the card is reading the tool's own result, which is still in the message.
 const (
-	cardTemplateClone   = "git-ws-clone"
-	cardTemplateRead    = "git-ws-read"
-	cardTemplateDiff    = "git-ws-diff"
-	cardTemplateStatus  = "git-ws-status"
-	cardTemplateLog     = "git-ws-log"
+	// The MIRROR's own results. A card is worth having here because the answer is a LIST or a COUNT
+	// that a reader scans — a file tree, a diff's file list, what a commit changed — and text alone
+	// makes them read a paragraph to find the one line they wanted.
+	cardTemplateFiles  = "git-file-list"
+	cardTemplateFile   = "git-file-read"
+	cardTemplateCommit = "git-file-patch"
+	cardTemplateSync   = "git-sync-upstream"
+
 	cardTemplatePRFiles = "gh-pr-files"
 	cardTemplatePRDiff  = "gh-pr-diff"
 	cardTemplatePRCheck = "gh-pr-checks"

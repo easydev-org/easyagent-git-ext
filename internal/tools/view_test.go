@@ -29,7 +29,7 @@ func TestViewRouteShapes(t *testing.T) {
 // host hands the frame the tool result, and the UI draws it. That is why a template carries no
 // workspace id — the card does not depend on one.
 func TestCardForNamesATemplate(t *testing.T) {
-	c := cardFor(cardTemplateClone)
+	c := cardFor(cardTemplateFiles)
 	if c == nil {
 		t.Fatal("no card")
 	}
@@ -38,8 +38,8 @@ func TestCardForNamesATemplate(t *testing.T) {
 	if c["ext"] != "gitdev" {
 		t.Errorf("ext = %v, want gitdev", c["ext"])
 	}
-	if c["template"] != cardTemplateClone {
-		t.Errorf("template = %v, want %v", c["template"], cardTemplateClone)
+	if c["template"] != cardTemplateFiles {
+		t.Errorf("template = %v, want %v", c["template"], cardTemplateFiles)
 	}
 	// No route: a card that pointed at one would be a page again, and would inherit every way a page
 	// can fail — the workspace expiring being the one that made this design wrong.

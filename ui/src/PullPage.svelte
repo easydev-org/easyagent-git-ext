@@ -360,4 +360,30 @@
     color: var(--foreground);
     cursor: pointer;
   }
+
+  /**
+   * NARROW SCREENS.
+   *
+   * The page is inside the host's side panel, which on a phone is the whole screen — so the width is
+   * the phone's, not a desktop's. Two things need changing, and both are about the difference
+   * between a mouse and a thumb:
+   *
+   *   the tab buttons grow to a 40px target, because a 4px gap between two 20px targets is a mis-tap
+   *   waiting to happen;
+   *   the header tightens, because a phone spends a sixth of its height on it before any content.
+   */
+  @media (max-width: 720px) {
+    .head {
+      padding: var(--sp-sm);
+    }
+    .tabs {
+      padding: var(--sp-xs, 4px) var(--sp-sm);
+    }
+    .tabs button {
+      padding: 10px 12px;
+    }
+    .retry {
+      padding: 10px 16px;
+    }
+  }
 </style>

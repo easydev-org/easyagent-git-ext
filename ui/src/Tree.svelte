@@ -47,6 +47,7 @@
   <button
     class="row"
     class:active={e.path === activePath}
+    data-dir={e.dir ? 'true' : 'false'}
     title={e.path}
     onclick={() => (e.dir ? ondir(e.path) : onopen(e.path))}
   >
@@ -91,12 +92,23 @@
     align-items: center;
     gap: 6px;
     width: 100%;
+    /* 26px is comfortable for a mouse and too small for a thumb; the narrow-screen block below
+       raises it. Kept explicit rather than inherited so the row height does not drift with the
+       reader's font size. */
+    min-height: 26px;
     padding: 3px 6px;
     border-radius: var(--radius-sm);
     text-align: left;
   }
   .row:hover {
     background: var(--secondary);
+  }
+  /* Keyboard focus must be visible: the tree is a long list of buttons, and tabbing through it with
+     no indicator is unusable. :focus-visible so a mouse click does not leave a ring behind. */
+  .row:focus-visible,
+  .crumb button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
   }
   .row.active {
     background: var(--secondary);
@@ -107,6 +119,12 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    /* A directory is a place and a file is a thing; the arrow is what makes that legible before the
+       colour is noticed. */
+    color: var(--muted-foreground);
+  }
+  .row[data-dir='true'] .kind {
+    color: var(--primary);
   }
   .name {
     overflow: hidden;
@@ -116,5 +134,22 @@
   .empty {
     padding: var(--sp-md);
     text-align: center;
+  }
+
+  /**
+   * NARROW SCREENS: the rows become thumb targets.
+   *
+   * 44px is the usual floor and this sits just under it at 40px — the tree is a dense list, and
+   * pushing every row to 44 costs a visible number of entries per screen. The rows are still
+   * separated by hover/active backgrounds, which is what a thumb actually aims at.
+   */
+  @media (max-width: 720px) {
+    .row {
+      min-height: 40px;
+      padding: 8px 8px;
+    }
+    .crumb button {
+      min-height: 36px;
+    }
   }
 </style>

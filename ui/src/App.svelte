@@ -274,51 +274,6 @@
     display: flex;
     flex-direction: column;
   }
-  .tabs {
-    display: flex;
-    gap: var(--sp-xs);
-    padding: var(--sp-sm);
-    border-bottom: 1px solid var(--border);
-    /* The row must be reachable while a file is scrolled long: sticky keeps Changes one tap away
-       instead of a scroll to the top. */
-    position: sticky;
-    top: 0;
-    background: var(--background);
-    z-index: 1;
-  }
-  .tabs button {
-    font: inherit;
-    color: inherit;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .tabs button:hover {
-    background: var(--secondary);
-  }
-  .tabs button.active {
-    background: var(--secondary);
-    color: var(--primary);
-    font-weight: 600;
-  }
-  .pill {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border-radius: 999px;
-    padding: 0 6px;
-    font-size: 10px;
-  }
-  .body {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: var(--sp-md);
-  }
   .state {
     padding: var(--sp-xl);
     text-align: center;
@@ -345,46 +300,5 @@
   .error {
     color: var(--destructive);
     white-space: pre-wrap;
-  }
-  .picker {
-    padding: var(--sp-sm);
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .pick {
-    font: inherit;
-    color: inherit;
-    background: none;
-    border: 0;
-    cursor: pointer;
-    display: flex;
-    gap: var(--sp-sm);
-    align-items: center;
-    padding: 6px 10px;
-    border-radius: var(--radius-sm);
-    text-align: left;
-  }
-  .pick:hover {
-    background: var(--secondary);
-  }
-  .log {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .commit {
-    display: flex;
-    gap: var(--sp-sm);
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-  }
-  .commit:hover {
-    background: var(--secondary);
-  }
-  .msg {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 </style>

@@ -206,6 +206,7 @@ func (t *toolset) filePatch(ctx context.Context, args map[string]any, session, t
 		Content: b.String(),
 		Data: map[string]any{
 			"commit": sha, "branch": branch, "changes": rows, "count": len(plan),
+			"card": cardFor(cardTemplateCommit),
 			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
@@ -236,6 +237,7 @@ func (t *toolset) fileRead(ctx context.Context, args map[string]any, session, te
 		Content: numberLines(f.Content),
 		Data: map[string]any{
 			"path": f.Path, "branch": branch, "content": f.Content, "size": f.Size,
+			"card": cardFor(cardTemplateFile),
 			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, path), f.Path),
 		},
 	}, nil
@@ -273,6 +275,7 @@ func (t *toolset) fileList(ctx context.Context, args map[string]any, session, te
 		Content: strings.TrimRight(b.String(), "\n"),
 		Data: map[string]any{
 			"dir": dir, "branch": branch, "entries": rows, "count": len(rows),
+			"card": cardFor(cardTemplateFiles),
 			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
@@ -323,6 +326,7 @@ func (t *toolset) syncUpstream(ctx context.Context, args map[string]any, session
 		Content: msg,
 		Data: map[string]any{
 			"branch": branch, "moved": moved, "before": local, "after": up, "upstream": upstream,
+			"card": cardFor(cardTemplateSync),
 			"view": mirrorView(cl.Owner, cl.Repo, atBranch(branch, ""), cl.Owner+"/"+cl.Repo+" @ "+branch),
 		},
 	}, nil
