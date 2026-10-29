@@ -21,7 +21,10 @@ func TestE2EIssuesAndComments(t *testing.T) {
 	}
 	token, repo := os.Getenv("GH_TOKEN"), os.Getenv("GH_E2E_REPO")
 	if token == "" || repo == "" {
-		t.Fatal("GH_TOKEN and GH_E2E_REPO are required")
+		// A MISSING TOKEN IS A SKIP, not a failure. GH_E2E=1 says "run the live suite"; whether this
+		// deployment has a token is a property of the deployment. Failing here would turn an
+		// unconfigured secret into a red build that says nothing about the code.
+		t.Skip("set GH_TOKEN and GH_E2E_REPO to run the live suite")
 	}
 
 	reg := Registry(Deps{
