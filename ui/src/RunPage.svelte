@@ -120,9 +120,12 @@
       .split('\n')
       .filter(l => l !== '' && !l.includes('##[group]') && !l.includes('##[endgroup]'))
       .map(l => {
+        // The FIRST line of a GitHub job log starts with a UTF-8 BOM, which defeats a regex anchored
+        // at `^` and left the timestamp in the body where it could not be dimmed. Stripped first.
+        const clean = l.replace(/^\uFEFF/, '')
         // ISO-8601 with a trailing Z, which is what the runner emits.
-        const m = l.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s(.*)$/)
-        return m ? { ts: m[1], body: m[2] } : { ts: '', body: l }
+        const m = clean.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+Z)\s(.*)$/)
+        return m ? { ts: m[1], body: m[2] } : { ts: '', body: clean }
       })
   }
 </script>
