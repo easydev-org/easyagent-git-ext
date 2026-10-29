@@ -188,6 +188,24 @@ func assertFastForward(repo *git.Repository, remoteName, branch, localSHA string
  * Returns the commit the new branch points at.
  */
 func (c *Client) CreateBranchFromUpstream(ctx context.Context, newBranch, upstreamURL, srcBranch, upstreamToken string) (string, error) {
+	return c.branchFromUpstream(ctx, newBranch, upstreamURL, srcBranch, upstreamToken, false)
+}
+
+/**
+ * ReplaceBranchFromUpstream does what CreateBranchFromUpstream does, but OVERWRITES an existing
+ * branch.
+ *
+ * THE ONE LEGITIMATE CALLER is establishing a mirror. A repository cannot be created empty on this
+ * forge — the create call writes an initial commit or refuses every later write — so its default
+ * branch exists before the upstream arrives, shares no ancestor with it, and a normal push is refused
+ * as non-fast-forward. Replacing is the intent there; everywhere else an existing name is a
+ * collision the caller must see.
+ */
+func (c *Client) ReplaceBranchFromUpstream(ctx context.Context, newBranch, upstreamURL, srcBranch, upstreamToken string) (string, error) {
+	return c.branchFromUpstream(ctx, newBranch, upstreamURL, srcBranch, upstreamToken, true)
+}
+
+func (c *Client) branchFromUpstream(ctx context.Context, newBranch, upstreamURL, srcBranch, upstreamToken string, force bool) (string, error) {
 	if newBranch == "" || upstreamURL == "" || srcBranch == "" {
 		return "", fmt.Errorf("newBranch, upstreamURL and srcBranch are required")
 	}
@@ -242,7 +260,8 @@ func (c *Client) CreateBranchFromUpstream(ctx context.Context, newBranch, upstre
 		RefSpecs: []config.RefSpec{
 			config.RefSpec("refs/remotes/" + remoteName + "/" + srcBranch + ":refs/heads/" + newBranch),
 		},
-		Auth: authFor(c.pushURL(), c.token),
+		Auth:  authFor(c.pushURL(), c.token),
+		Force: force,
 	}); err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		if strings.Contains(err.Error(), "already exists") || strings.Contains(err.Error(), "rejected") {
 			return "", ErrBranchExists

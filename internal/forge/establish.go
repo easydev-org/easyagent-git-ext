@@ -51,7 +51,13 @@ func (c *Client) Establish(ctx context.Context, name, upstreamURL, upstreamBranc
 
 	// The content, from the upstream, under the SAME branch name: a mirror whose main is called
 	// something else would break every later step that assumes the upstream's names.
-	sha, perr := c.CreateBranchFromUpstream(ctx, upstreamBranch, upstreamURL, upstreamBranch, upstreamToken)
+	//
+	// FORCED, and only here. Creating the repository (above) necessarily writes an initial commit, so
+	// its `main` already exists — and the upstream's `main` shares no ancestor with it, which makes the
+	// push a non-fast-forward and gets it refused. This is the one call where replacing that branch is
+	// the intent rather than a collision: the initial commit exists only because the platform would
+	// not let us create an empty repository, and its content (a placeholder README) is not wanted.
+	sha, perr := c.ReplaceBranchFromUpstream(ctx, upstreamBranch, upstreamURL, upstreamBranch, upstreamToken)
 	if perr != nil {
 		return "", "", fmt.Errorf("copy %s from the upstream: %w", upstreamBranch, perr)
 	}
