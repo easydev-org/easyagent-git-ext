@@ -89,11 +89,12 @@
         <ul class="comments">
           {#each comments as c (c.id)}
             <li class="comment">
+              <span class="avatar" aria-hidden="true">{(c.author || '?').slice(0, 1)}</span>
               <div class="comment-head">
                 <span class="who">{c.author || 'someone'}</span>
                 {#if c.when}<span class="muted t-micro">{c.when}</span>{/if}
               </div>
-              <div class="md">{@html renderMarkdown(c.body)}</div>
+              <div class="md comment-body">{@html renderMarkdown(c.body)}</div>
             </li>
           {/each}
         </ul>
@@ -115,6 +116,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-xs, 4px);
+    /* A header is a label for the thread below it, so it shares the thread's measure rather than
+       spanning a wide window. */
+    max-width: 68rem;
+    width: 100%;
+    margin: 0 auto;
   }
   .title-row {
     display: flex;
@@ -139,6 +145,12 @@
     font-size: var(--text-micro, 10px);
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    /* A pill, not bare letters: an unadorned word in colour reads as a typo, and a shape reads as a
+       status at a glance. */
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    line-height: 1.6;
   }
   .badge.open { color: var(--success, #1a7f37); }
   .badge.closed { color: var(--destructive, #cf222e); }
@@ -146,6 +158,7 @@
     text-transform: none;
     color: var(--primary);
     text-decoration: none;
+    border-color: var(--border);
   }
   .badge.link:hover { text-decoration: underline; }
   .meta {
@@ -175,6 +188,12 @@
     flex-direction: column;
     gap: var(--sp-md);
     min-height: 0;
+    /* THE READER'S MEASURE, not the window's. A one-line comment stretched across a 2400px monitor
+       is unreadable — the eye loses the line on the way back — and the fix is a cap, not smaller
+       text. 68rem is roughly 90 characters at this size. */
+    max-width: 68rem;
+    width: 100%;
+    margin: 0 auto;
   }
   .sec-title {
     margin: var(--sp-sm) 0 0;
@@ -194,13 +213,38 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     padding: var(--sp-sm);
+    background: var(--card);
+    /* Room for the avatar column, so the text of every comment starts at the same x. */
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    column-gap: var(--sp-sm);
   }
   .comment-head {
     display: flex;
     gap: var(--sp-sm);
     align-items: baseline;
     margin-bottom: 4px;
+    grid-column: 2;
   }
+  /* A placeholder mark, not a picture: fetching every commenter's avatar costs a request per
+     comment on a page that may show fifty of them, and the initial carries the same information —
+     WHO — that the avatar would. */
+  .avatar {
+    grid-row: 1 / span 2;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--secondary);
+    color: var(--muted-foreground);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-micro, 10px);
+    font-weight: 600;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  .comment-body { grid-column: 2; min-width: 0; }
   .who { font-weight: 600; font-size: var(--text-meta, 12px); }
   .md { overflow-wrap: anywhere; }
   .md :global(p) { margin: 0 0 var(--sp-sm); }

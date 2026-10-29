@@ -196,6 +196,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-xs, 4px);
+    /* The same reader's measure as the issue page: a title and a branch line stretched across a wide
+       window are harder to scan than the same text in a column. */
+    max-width: 68rem;
+    width: 100%;
+    margin: 0 auto;
   }
   .title-row {
     display: flex;
@@ -260,6 +265,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-sm);
+    /* A diff is the one thing here that wants width, so this cap is generous — it exists to stop a
+       single short line from being stretched across a 4K monitor, not to narrow the code. */
+    max-width: 100rem;
+    width: 100%;
+    margin: 0 auto;
   }
   .body-text {
     margin: 0;
