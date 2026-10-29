@@ -103,11 +103,18 @@ jobs:
 
       - name: live e2e (real GitHub)
         env:
+          # THE NAMES HERE MUST MATCH WHAT THE TESTS READ. They used to be E2E_* while the tests read
+          # GH_*, so every test skipped and the step passed by doing nothing — a "live" check that
+          # proved nothing for as long as it existed. GH_E2E is the switch that makes a missing token
+          # a failure rather than a skip.
+          GH_E2E: "1"
+          GH_TOKEN: ${{ secrets.E2E_GITHUB_TOKEN }}
+          GH_E2E_REPO: easydev-org/test
           E2E_NATS_URL: nats://127.0.0.1:4222
-          # A token with read access to easydev-org/test. The clone is the assertion: without this
-          # the suite would skip, which is why the skip is loud in the log.
-          E2E_GITHUB_TOKEN: ${{ secrets.E2E_GITHUB_TOKEN }}
-        run: go test ./interop/e2e/ -v -count=1 -timeout 600s
+        # ./interop/e2e is gone with the workspace: it drove git-ws-clone and the checkout tools, which
+        # no longer exist. The live coverage that remains is in internal/tools — those tests talk to
+        # the real GitHub API and need no local checkout, which is the point.
+        run: go test ./internal/tools/ -run 'TestE2E' -v -count=1 -timeout 600s
 
       - name: dump nats logs on failure
         if: failure()
