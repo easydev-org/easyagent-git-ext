@@ -1,56 +1,37 @@
-// Package uihandler serves the browser UI's data.
+// Package uihandler serves the browser panel's pull-request data.
 //
-// EVERYTHING HERE READS THE LOCAL WORKSPACE, NOT GITHUB.
+// WHAT IS LEFT OF IT: the pull-request endpoints. Everything else — the file tree, diffs, logs, the
+// workspace picker — read a LOCAL CHECKOUT that this extension no longer keeps. Repository content
+// now lives on the forge and is read there (see the gitea extension), so those endpoints had no data
+// source and were removed with the workspace they read.
 //
-// A checkout is already on the pod's disk, so the file tree, file contents, status, diff, log and
-// blame are plain disk and go-git reads. Going to api.github.com for those would be slower, rate
-// limited (60 requests/hour unauthenticated, 5000 authenticated), and — for a repository the user
-// just edited — WRONG, because the remote does not have those edits yet. The workspace is the only
-// source that knows what this session changed.
-//
-// The one thing that cannot come from disk is the clone itself; that already happens through the
-// `git-ws-clone` tool.
+// What remains is genuinely GitHub-side: a pull request, its files, its diff and its CI status exist
+// only on the remote, and fetching them here is not a second copy of anything.
 package uihandler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
-
-	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 )
 
 // Handler answers the UI's JSON requests.
 type Handler struct {
-	Workspaces *workspace.Manager
 	// Identity resolves the caller's bearer to a tenant. REQUIRED: without it every request is
 	// refused, because the alternative is trusting a `?tenant=` parameter.
 	Identity *IdentityResolver
-	// Pulls reads pull requests from GitHub. Optional: the workspace endpoints work without it, and
-	// a deployment with no GitHub token simply has no PR pages.
-	//
-	// This is the ONLY remote read in this package; everything else is the local checkout on purpose.
+	// Pulls reads pull requests from GitHub. Optional: a deployment without a GitHub token simply
+	// has no PR pages, rather than failing at call time.
 	Pulls PullSource
 }
 
-// scope is the (tenant, session) pair that owns a workspace.
+// who resolves the caller's tenant, or an error the handler must turn into 401.
 //
 // TENANT IS NOT TAKEN FROM THE REQUEST. It is resolved from the bearer token, because a query
-// parameter is caller-controlled: `?tenant=victim` would otherwise read another tenant's checkout.
-// That was a real hole — an unauthenticated request with a chosen tenant answered 200 — and it is
-// why `who()` below exists.
-//
-// SESSION still comes from the query: it selects among a tenant's own workspaces, and
-// Manager.Get refuses one the caller does not own, so it can only ever narrow.
-type scope struct {
-	ws      string
-	tenant  string
-	session string
-}
-
-// who resolves the caller's tenant, or an error the handler must turn into 401.
+// parameter is caller-controlled: `?tenant=victim` would otherwise read another tenant's data. That
+// was a real hole, and it is why `who()` exists.
 func (h *Handler) who(r *http.Request) (string, error) {
 	if h.Identity == nil {
 		// Failing closed: a deployment that forgot to wire identity must not serve data.
@@ -69,277 +50,45 @@ func bearerOf(r *http.Request) string {
 	return ""
 }
 
-func scopeOf(r *http.Request, tenant string) scope {
-	q := r.URL.Query()
-	return scope{ws: q.Get("ws"), tenant: tenant, session: q.Get("session")}
-}
-
-func (h *Handler) ws(s scope) (*workspace.Workspace, error) {
-	if h.Workspaces == nil {
-		return nil, errors.New("workspaces are not configured")
-	}
-	if s.ws == "" {
-		return nil, errors.New("ws (workspace id) is required")
-	}
-	return h.Workspaces.Get(s.ws, s.tenant, s.session)
-}
-
-// authedWS is the entry point every workspace handler uses: authenticate, then load.
-//
-// One helper rather than the same two steps per handler, because a handler that forgot the first
-// step would silently serve another tenant's data — the mistake this whole change exists to close.
-// Returning the error keeps the decision to 401 in writeErr, where it is made once.
-func (h *Handler) authedWS(w http.ResponseWriter, r *http.Request) (*workspace.Workspace, bool) {
-	tenant, err := h.who(r)
-	if err != nil {
-		writeErr(w, err)
-		return nil, false
-	}
-	ws, err := h.ws(scopeOf(r, tenant))
-	if err != nil {
-		writeErr(w, err)
-		return nil, false
-	}
-	return ws, true
-}
-
-// writeJSON is the only way this package answers, so an error is always the same shape and the UI
-// has one branch to handle instead of guessing per endpoint.
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeErr(w http.ResponseWriter, err error) {
-	code := http.StatusBadRequest
-	switch {
-	case errors.Is(err, ErrUnauthenticated):
-		code = http.StatusUnauthorized
-	case errors.Is(err, workspace.ErrNoWorkspace), errors.Is(err, workspace.ErrNotOwned):
-		// 404 rather than 403 for NotOwned: telling a caller that someone else's workspace exists is
-		// information they do not need.
-		code = http.StatusNotFound
-	}
-	writeJSON(w, code, map[string]any{"error": err.Error()})
-}
-
-// Register wires the UI's endpoints onto mux, under `prefix`.
-//
-// The prefix MUST be the same one the UI is mounted at (UISpec.Base), because the host proxies only
-// that prefix to this extension. The API originally lived at /api/v1/ui/ — an absolute path that
-// the UI, served from /ext/github/, then requested from the HOST's root, where it fell through to
-// the host's SPA and returned HTML. Every call failed with a JSON parse error and no 404 to point
-// at it.
-//
-// Keeping the API under the UI's own prefix also means one reverse-proxy rule covers both.
+/**
+ * Register mounts the panel's API under `prefix`.
+ *
+ * The prefix is part of every route rather than stripped by the caller: a host that proxies this
+ * mount hands the handler the request it received, path intact. Registering bare "/pull" would never
+ * match "/ext/github/api/pull" — a mistake that cost a whole debugging session on another extension.
+ */
 func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 	p := strings.TrimSuffix(prefix, "/") + "/api/"
-	mux.HandleFunc(p+"workspaces", h.listWorkspaces)
-	mux.HandleFunc(p+"tree", h.tree)
-	mux.HandleFunc(p+"file", h.file)
-	mux.HandleFunc(p+"status", h.status)
-	mux.HandleFunc(p+"diff", h.diff)
-	mux.HandleFunc(p+"log", h.log)
-	// Pull requests: a PAGE the reader visits to see the current state, so it reads the remote rather
-	// than replaying the snapshot a tool returned.
 	mux.HandleFunc(p+"pull", h.pull)
 	mux.HandleFunc(p+"pull/files", h.pullFiles)
 	mux.HandleFunc(p+"pull/diff", h.pullDiff)
 	mux.HandleFunc(p+"pull/checks", h.pullChecks)
 }
 
-func (h *Handler) listWorkspaces(w http.ResponseWriter, r *http.Request) {
-	if h.Workspaces == nil {
-		writeErr(w, errors.New("workspaces are not configured"))
-		return
+// tenantKey carries the resolved tenant through a request's context, so a PullSource — which takes a
+// plain context — can resolve the token without re-authenticating. The pull handlers put it there
+// after `who()` has succeeded, and nothing else writes it: a value a caller could set would be a
+// value a caller could choose.
+type tenantKey struct{}
+
+// tenantFrom reads the tenant the handler resolved.
+func tenantFrom(ctx context.Context) (string, error) {
+	if t, ok := ctx.Value(tenantKey{}).(string); ok && t != "" {
+		return t, nil
 	}
-	// The tenant comes from the token, not the query: listing another tenant's checkouts would
-	// disclose their repositories even though each read below is ownership-checked.
-	tenant, err := h.who(r)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	q := r.URL.Query()
-	list := h.Workspaces.List(tenant, q.Get("session"))
-	out := make([]map[string]any, 0, len(list))
-	for _, ws := range list {
-		out = append(out, map[string]any{
-			"id": ws.ID, "repo": ws.Repo, "branch": ws.CurrentBranch(),
-			// The session is reported because the list can span them: an extension opened from its own
-			// tab has no session to narrow by, so the reader needs to know which conversation each
-			// checkout belongs to.
-			"session": ws.Session,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"workspaces": out})
+	return "", errors.New("no tenant on the request context")
 }
 
-// underDir returns f relative to dir, and whether f is inside it at all.
-//
-// Compared segment-wise rather than with strings.HasPrefix: "src-old/x" has the prefix "src" but is
-// not inside "src", and a tree that showed it would let a click open a file the caller did not ask
-// for.
-func underDir(f, dir string) (string, bool) {
-	dir = trimSlash(dir)
-	if dir == "" {
-		return f, true
-	}
-	if f == dir {
-		return "", false
-	}
-	if len(f) > len(dir)+1 && f[:len(dir)] == dir && f[len(dir)] == '/' {
-		return f[len(dir)+1:], true
-	}
-	return "", false
+func writeJSON(w http.ResponseWriter, status int, body any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
 }
 
-func trimSlash(p string) string {
-	for len(p) > 0 && p[0] == '/' {
-		p = p[1:]
+func writeErr(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, ErrUnauthenticated) {
+		status = http.StatusUnauthorized
 	}
-	for len(p) > 0 && p[len(p)-1] == '/' {
-		p = p[:len(p)-1]
-	}
-	return p
-}
-
-// indexSep returns the index of the first path separator, or -1.
-func indexSep(p string) int {
-	for i := 0; i < len(p); i++ {
-		if p[i] == '/' {
-			return i
-		}
-	}
-	return -1
-}
-
-// fileNode is one entry in the tree.
-//
-// Flat paths from ListFiles are turned into a tree here rather than in the browser: the UI renders
-// a directory listing one level at a time, and doing that from a flat list client-side means
-// re-deriving parents for every node on every render.
-type fileNode struct {
-	Path string `json:"path"`
-	Dir  bool   `json:"dir"`
-	Size int64  `json:"size,omitempty"`
-}
-
-func (h *Handler) tree(w http.ResponseWriter, r *http.Request) {
-	ws, ok := h.authedWS(w, r)
-	if !ok {
-		return
-	}
-	files, err := ws.ListFiles()
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	// `dir` narrows to one directory's entries. Without it the whole tree is returned, which is
-	// what a "show everything" toggle wants.
-	dir := r.URL.Query().Get("dir")
-	out := make([]fileNode, 0, len(files))
-	seenDirs := map[string]bool{}
-	for _, f := range files {
-		if dir == "" {
-			out = append(out, fileNode{Path: f})
-			continue
-		}
-		rel, ok := underDir(f, dir)
-		if !ok {
-			continue
-		}
-		// Only the immediate children, and a directory appears once.
-		if i := indexSep(rel); i >= 0 {
-			d := dir + "/" + rel[:i]
-			if !seenDirs[d] {
-				seenDirs[d] = true
-				out = append(out, fileNode{Path: trimSlash(dir) + "/" + rel[:i], Dir: true})
-			}
-			continue
-		}
-		out = append(out, fileNode{Path: trimSlash(dir) + "/" + rel})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"dir": dir, "entries": out})
-}
-
-func (h *Handler) file(w http.ResponseWriter, r *http.Request) {
-	ws, ok := h.authedWS(w, r)
-	if !ok {
-		return
-	}
-	p := r.URL.Query().Get("path")
-	if p == "" {
-		writeErr(w, errors.New("path is required"))
-		return
-	}
-	data, err := ws.ReadFile(p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	// Binary detection by NUL byte: a repository has images and archives, and shipping megabytes of
-	// base64 into an editor pane helps nobody. The UI shows "binary" and offers a download instead.
-	bin := false
-	for _, b := range data {
-		if b == 0 {
-			bin = true
-			break
-		}
-	}
-	resp := map[string]any{"path": p, "size": len(data), "binary": bin}
-	if !bin {
-		resp["content"] = string(data)
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
-func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
-	ws, ok := h.authedWS(w, r)
-	if !ok {
-		return
-	}
-	st, err := ws.Status()
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"branch": ws.CurrentBranch(), "changes": st})
-}
-
-func (h *Handler) diff(w http.ResponseWriter, r *http.Request) {
-	ws, ok := h.authedWS(w, r)
-	if !ok {
-		return
-	}
-	q := r.URL.Query()
-	text, err := ws.Diff(workspace.DiffOptions{
-		Path:   q.Get("path"),
-		Staged: q.Get("staged") == "1",
-	})
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"diff": text})
-}
-
-func (h *Handler) log(w http.ResponseWriter, r *http.Request) {
-	ws, ok := h.authedWS(w, r)
-	if !ok {
-		return
-	}
-	// Bounded: an unbounded log of a large repository is megabytes for a panel that shows a dozen
-	// rows.
-	limit := 50
-	if v, cerr := strconv.Atoi(r.URL.Query().Get("limit")); cerr == nil && v > 0 && v <= 500 {
-		limit = v
-	}
-	entries, err := ws.Log(limit)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+	writeJSON(w, status, map[string]string{"error": err.Error()})
 }

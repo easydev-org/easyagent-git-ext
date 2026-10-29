@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"time"
 
 	easybus "github.com/easydev-org/easybus-sdk"
 	"github.com/easydev-org/easybus-sdk/extension"
@@ -18,9 +17,9 @@ import (
 
 	"github.com/easydev-org/easyagent-github-ext/internal/tools"
 	"github.com/easydev-org/easyagent-github-ext/internal/uihandler"
-	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 	// The PR source reads GitHub for the UI's pull-request pages — the one remote read in the UI's
-	// data path. Everything else there is the local checkout.
+	// data path. Everything else the panel used to show came from a local checkout, which this
+	// extension no longer keeps.
 	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
 )
 
@@ -46,7 +45,7 @@ const uiBase = "/ext/github"
 // The probe routes are re-declared here because supplying a Handler REPLACES the SDK's default one;
 // without them a deployment that added a UI would lose its liveness endpoints and start crash
 // looping under a probe that had worked before.
-func uiMux(ws *workspace.Manager, ver, agentURL string, pulls uihandler.PullSource) http.Handler {
+func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -58,10 +57,9 @@ func uiMux(ws *workspace.Manager, ver, agentURL string, pulls uihandler.PullSour
 	})
 	// Identity resolves a caller's bearer to a tenant by asking the agent, which owns the token
 	// table. Without this the UI API would have to trust `?tenant=`, i.e. let anyone read any
-	// tenant's checkout by naming it.
+	// tenant's data by naming it.
 	(&uihandler.Handler{
-		Workspaces: ws,
-		Identity:   &uihandler.IdentityResolver{AgentURL: agentURL},
+		Identity: &uihandler.IdentityResolver{AgentURL: agentURL},
 		// Pull requests are the one remote read the UI makes: a page shows the CURRENT state, where a
 		// card replays the snapshot a tool returned.
 		Pulls: pulls,
@@ -87,26 +85,8 @@ func main() {
 
 	// Workspaces are plain directories on this pod's disk. No database: a workspace is a git
 	// checkout, and git already knows how to be one.
-	//
-	// The root is deliberately on LOCAL disk (not a shared volume): a checkout is a session's
-	// private scratchpad, and two pods sharing one directory would fight over the index.
-	root := envOr("WORKSPACE_ROOT", "/tmp/workspaces")
-	idle := 2 * time.Hour
-	if v := envOr("WORKSPACE_IDLE_TTL", ""); v != "" {
-		if d, derr := time.ParseDuration(v); derr == nil {
-			idle = d
-		}
-	}
-	wsMgr, err := workspace.NewManager(root, idle)
-	if err != nil {
-		log.Error("workspace root", "root", root, "err", err)
-		os.Exit(1)
-	}
-	log.Info("workspaces enabled", "root", root, "idle_ttl", idle.String())
-
 	var ext *extension.Extension
 	handlers := tools.Registry(tools.Deps{
-		Workspaces: wsMgr,
 		// Object storage for gh-artifact-download. An artifact archive is arbitrary in size, so
 		// it is stored under a tenant-scoped key and referred to by name — never returned inline.
 		PutObject: func(ctx context.Context, tenant, name string, data []byte) error {
@@ -207,7 +187,7 @@ func main() {
 		// configuration and configuration can change while this pod is running. Holding one here
 		// would pin whatever was set at boot.
 		Handler: uiMux(
-			wsMgr, m.Version,
+			m.Version,
 			envOr("AGENT_URL", "http://agent.dev.svc.cluster.local"),
 			&ghclient.PullSource{
 				TokenFor: func(tenant string) string {
@@ -224,22 +204,6 @@ func main() {
 		),
 		Run: func(ctx context.Context, _ *extension.Extension) {
 			log.Info("listening", "nats", natsURL)
-			// Reap abandoned workspaces. Without this a long-lived pod fills its disk with
-			// checkouts nobody will come back to.
-			go func() {
-				t := time.NewTicker(15 * time.Minute)
-				defer t.Stop()
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case now := <-t.C:
-						if n := wsMgr.SweepIdle(now); n > 0 {
-							log.Info("swept idle workspaces", "removed", n)
-						}
-					}
-				}
-			}()
 			// Publish releases onto the `github` channel, so a session can follow a
 			// repository and be woken when a version ships.
 			startReleaseWatchers(ctx, ext, log)

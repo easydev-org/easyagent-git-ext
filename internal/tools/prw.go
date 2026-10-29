@@ -2,23 +2,31 @@ package tools
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/easydev-org/easybus-sdk/extension"
 )
 
-// gh-pr-create: the ONLY way a change reaches GitHub.
-//
-// It PUBLISHES what is already committed: the workspace's current branch is pushed and turned
-// into a pull request. Committing is `git-ws-commit`, kept separate on purpose — a session may
-// commit several times before publishing, which is how work is actually done.
-//
-// So the division is: git-ws-commit (local, repeatable) → gh-pr-create (publish once).
+/**
+ * gh-pr-create: open a pull request for a branch that is ALREADY on GitHub.
+ *
+ * WHY IT NO LONGER PUSHES. It used to take a workspace, commit it, push a fresh branch and then open
+ * the pull request — three steps behind one name. That worked only while this extension owned a git
+ * checkout. It no longer does: the mirror is changed through the forge's API and pushed with
+ * `git-push-branch`, which is the one thing that knows which branch to send where.
+ *
+ * So the split is now honest, and each tool does one thing:
+ *
+ *	git-branch-create + git-file-patch   change the mirror
+ *	git-push-branch                      send that branch to GitHub
+ *	gh-pr-create                         open the request
+ *
+ * `head` is REQUIRED and is not guessed. A caller that just pushed knows the name; one that did not
+ * would be opening a request for a branch that may not exist, and the error for that is far less
+ * clear than a missing argument.
+ */
 func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, tenant string) (extension.ToolResultData, error) {
-	Progress(ctx).Phase("checking the workspace")
 	repo, err := required(args, "repo")
 	if err != nil {
 		return extension.ToolResultData{}, err
@@ -27,6 +35,12 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
+	head := strings.TrimSpace(argStr(args, "head"))
+	if head == "" {
+		return extension.ToolResultData{}, errArg(
+			"head is required: the branch that already exists on GitHub " +
+				"(push it first with git-push-branch)")
+	}
 	if err := t.requireRepo(ctx, PermMaintainer, repo); err != nil {
 		return extension.ToolResultData{}, err
 	}
@@ -34,108 +48,45 @@ func (t *toolset) prCreate(ctx context.Context, args map[string]any, session, te
 		return extension.ToolResultData{}, errArg("opening a pull request needs a GitHub token; set the `token` setting")
 	}
 
-	w, err := t.gws(args, session, tenant)
-	if err != nil {
-		return extension.ToolResultData{}, err
-	}
-	if w.Repo != repo {
-		// Checked rather than assumed: a workspace of a DIFFERENT repository would push the
-		// wrong content under this repository's name.
-		return extension.ToolResultData{}, errArg(fmt.Sprintf(
-			"workspace %s holds %s, not %s", w.ID, w.Repo, repo))
-	}
-
-	// Uncommitted changes are REFUSED rather than swept into the pull request: a caller that
-	// edited and did not commit has not decided what the commit says, and publishing anyway
-	// would make the commit message a lie.
-	changed, serr := w.Status()
-	if serr != nil {
-		return extension.ToolResultData{}, errFailed("status: %v", serr)
-	}
-	if len(changed) > 0 {
-		var b strings.Builder
-		for _, f := range changed {
-			fmt.Fprintf(&b, "  %-9s %s\n", f.Status, f.Path)
-		}
-		return extension.ToolResultData{}, errArg(
-			"there are uncommitted changes:\n" + b.String() +
-				"commit them with git-ws-commit first, so the pull request carries a message that describes it")
-	}
-
-	// The branch to publish. A workspace cloned at the default branch has main checked out, and
-	// pushing THAT would be a direct push to main — so a fresh pr/* branch is created instead.
-	branch := w.CurrentBranch()
-	if branch == "" || branch == "main" || branch == "master" {
-		Progress(ctx).Phase("creating a branch")
-		fresh, berr := newBranchName()
-		if berr != nil {
-			return extension.ToolResultData{}, errFailed("branch name: %v", berr)
-		}
-		if cerr := w.CreateBranch(fresh); cerr != nil {
-			return extension.ToolResultData{}, errFailed("create branch %s: %v", fresh, cerr)
-		}
-		branch = fresh
-	}
-
-	Progress(ctx).Phase("pushing")
-	pushed, perr := w.Push(ctx, t.token(tenant))
-	if perr != nil {
-		return extension.ToolResultData{}, errFailed("%v", perr)
-	}
-
 	c, _, err := t.clientFor(tenant, args)
 	if err != nil {
 		return extension.ToolResultData{}, err
 	}
-	base := argStr(args, "base")
+	base := strings.TrimSpace(argStr(args, "base"))
 	if base == "" {
+		// Resolved rather than assumed: the default branch differs between repositories, and
+		// opening a request into a guessed branch fails with a message about a missing branch.
 		info, ierr := c.Info(ctx)
 		if ierr != nil {
 			return extension.ToolResultData{}, errFailed("resolve default branch: %v", ierr)
 		}
 		base = info.DefaultBranch
 	}
+	if head == base {
+		return extension.ToolResultData{}, errArg(fmt.Sprintf(
+			"head and base are both %q: a pull request needs two different branches", base))
+	}
+
 	Progress(ctx).Phase("opening the pull request")
-	pr, err := c.CreatePR(ctx, base, branch, title, argStr(args, "body"))
+	pr, err := c.CreatePR(ctx, base, head, title, argStr(args, "body"))
 	if err != nil {
-		// The branch exists; only the PR does not. Naming the branch lets the caller retry just
-		// the pull request, and keeps an orphaned branch from going unnoticed.
+		// The branch state is the common cause and is worth naming: the caller can then check
+		// whether the push happened, rather than re-reading a generic API error.
 		return extension.ToolResultData{}, errFailed(
-			"pushed branch %s but could not open the pull request: %v (retry with base=%s)",
-			branch, err, base)
+			"could not open a pull request for %s -> %s: %v (was %s pushed?)",
+			head, base, err, head)
 	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "opened pull request #%d\n", pr.Number)
 	fmt.Fprintf(&b, "%s\n", pr.HTMLURL)
-	fmt.Fprintf(&b, "branch: %s -> %s\n", branch, base)
-	fmt.Fprintf(&b, "commit: %s\n", shortSHA(pushed.SHA))
+	fmt.Fprintf(&b, "branch: %s -> %s\n", head, base)
 	b.WriteString("\nCI runs on the PR; check it with gh-pr-checks.")
 	return extension.ToolResultData{
 		Content: b.String(),
 		Data: map[string]any{
-			"pr": pr.Number, "url": pr.HTMLURL, "branch": branch, "base": base,
-			"commit": pushed.SHA,
+			"pr": pr.Number, "url": pr.HTMLURL, "branch": head, "base": base,
+			"view": pullView(repo, pr.Number, fmt.Sprintf("%s#%d", repo, pr.Number)),
 		},
 	}, nil
-}
-
-// newBranchName makes a fresh branch name every time.
-//
-// Never reused: a second change that reused pr/<id> would rewrite the branch a reviewer is
-// already reading, turning their review into a moving target.
-func newBranchName() (string, error) {
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	return "pr/" + hex.EncodeToString(b[:]), nil
-}
-
-// author is the commit identity used for agent-made commits.
-func author(tenant string) struct{ Name, Email string } {
-	return struct{ Name, Email string }{
-		Name:  "easyagent",
-		Email: "easyagent@" + tenant + ".local",
-	}
 }

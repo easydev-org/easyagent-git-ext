@@ -7,25 +7,11 @@ import (
 	"strconv"
 )
 
-// tenantKey carries the resolved tenant through a request's context, so a PullSource — which takes a
-// plain context — can resolve the token without re-authenticating. The handlers below put it there
-// after `who()` has succeeded, and nothing else writes it: a value that a caller could set would be
-// a value a caller could choose.
-type tenantKey struct{}
-
-// tenantFrom reads the tenant the handler resolved.
-func tenantFrom(ctx context.Context) (string, error) {
-	if t, ok := ctx.Value(tenantKey{}).(string); ok && t != "" {
-		return t, nil
-	}
-	return "", errors.New("no tenant on the request context")
-}
-
 // The pull-request endpoints behind the UI's PR page.
 //
-// Split from uihandler.go because they are the opposite kind of read: everything there is the LOCAL
-// checkout, everything here is GitHub. Keeping them in one file invites a caller to assume the auth
-// and caching story is the same, and it is not — these need a token and they cost rate limit.
+// These are now the ONLY endpoints: the rest of the panel read a local checkout this extension no
+// longer keeps. What is left costs rate limit, which is why the auth and caching story is stated
+// here rather than assumed.
 
 // authedPull resolves the tenant and the request's repository/number, or writes the error.
 func (h *Handler) authedPull(w http.ResponseWriter, r *http.Request) (repo string, number int, ok bool) {

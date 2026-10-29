@@ -16,26 +16,16 @@ import (
 
 	"github.com/easydev-org/easyagent-github-ext/internal/config"
 	"github.com/easydev-org/easyagent-github-ext/internal/i18n"
-	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 )
 
 // easybusInternal is the SDK's internal-error code, aliased so a handler can say "the
 // deployment is misconfigured" without importing the SDK for one constant.
 const easybusInternal = easybus.ToolResultErrorCodeInternal
 
-// CloneParams is the subset of workspace.CloneOptions the tool layer fills in.
-//
-// Declared here so the tools package does not have to know the shape of the workspace package's
-// options struct — the mapping lives in one place, in gitlocal.go.
-type CloneParams = workspace.CloneOptions
-
 // Deps is what the tools need from the extension host.
 type Deps struct {
 	GetConfig func(name, session, tenant string) any
 	Locale    func(session, tenant string) string
-	// Workspaces holds the per-session git checkouts. Required: without it no git-* tool can
-	// run, because every one of them operates on a workspace.
-	Workspaces *workspace.Manager
 	// PutObject stores a large object for a tenant. Used by gh-artifact-download: an artifact is
 	// a zip of arbitrary size, so it is stored and referenced by name rather than returned in the
 	// tool result. Nil means the deployment has no object storage, and that tool reports so.
@@ -107,21 +97,6 @@ func RequireMap() map[string][]string {
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
 	raw := map[string]Handler{
-		// LOCAL git. Everything here happens inside a workspace directory; none of it talks to
-		// GitHub. A workspace comes from git-ws-clone and is identified by its id.
-		"git-ws-clone":     t.gitClone,
-		"git-ws-workspace": t.gitWorkspace,
-		"git-ws-status":    t.gitStatus,
-		"git-ws-patch":     t.gitPatch,
-		"git-ws-read":      t.gitRead,
-		"git-ws-list":      t.gitList,
-		"git-ws-log":       t.gitLog,
-		"git-ws-diff":      t.gitDiff,
-		"git-ws-blame":     t.gitBlame,
-		"git-ws-commit":    t.gitCommit,
-		"git-ws-pull":      t.gitPull,
-		"git-ws-reset":     t.gitReset,
-
 		// GITHUB PLATFORM. Repository metadata, account, releases, packages.
 		"gh-info":     t.info,
 		"gh-whoami":   t.whoami,

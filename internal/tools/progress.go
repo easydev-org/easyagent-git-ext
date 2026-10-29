@@ -8,7 +8,6 @@ import (
 	easybus "github.com/easydev-org/easybus-sdk"
 
 	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
-	"github.com/easydev-org/easyagent-github-ext/internal/workspace"
 )
 
 // In-flight progress for a tool call.
@@ -73,7 +72,6 @@ func Progress(ctx context.Context) *Reporter {
 func progressCtx(ctx context.Context) context.Context {
 	r := Progress(ctx)
 	ctx = ghclient.WithPhaseReporter(ctx, r)
-	ctx = workspace.WithPhaseReporter(ctx, r)
 	return ctx
 }
 
