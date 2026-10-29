@@ -44,6 +44,38 @@ export interface CommentView {
 }
 
 /** One workflow run. `conclusion` is empty while it is still going. */
+export interface RepoSummary {
+  fullName: string
+  description: string
+  private: boolean
+  archived: boolean
+  fork: boolean
+  defaultBranch: string
+}
+
+export interface OrgSummary {
+  login: string
+  description: string
+}
+
+export interface ReleaseSummary {
+  tag: string
+  name: string
+  draft: boolean
+  prerelease: boolean
+  publishedAt: string
+  url: string
+  body: string
+  assets: number
+}
+
+export interface WorkflowSummary {
+  id: number
+  name: string
+  path: string
+  state: string
+}
+
 export interface RunView {
   id: number
   name: string
@@ -222,6 +254,21 @@ async function get<T>(path: string, params: Record<string, string | undefined> =
 }
 
 export const api = {
+  // THE LAYER ABOVE A REPOSITORY. These answer "what is there" — the question a reader has before
+  // the panel can show them anything about a repository.
+  repos: (org = '') =>
+    get<{ repos: RepoSummary[]; count: number }>('repos', { org }).then(r => r.repos ?? []),
+  orgs: () => get<{ orgs: OrgSummary[]; count: number }>('orgs').then(r => r.orgs ?? []),
+  whoami: () => get<{ login: string }>('whoami').then(r => r.login ?? ''),
+  releases: (repo: string, limit = 20) =>
+    get<{ releases: ReleaseSummary[]; count: number }>('releases', {
+      repo,
+      limit: String(limit),
+    }).then(r => r.releases ?? []),
+  workflows: (repo: string) =>
+    get<{ workflows: WorkflowSummary[]; count: number }>('workflows', { repo }).then(
+      r => r.workflows ?? [],
+    ),
   // THE MIRROR. These read the forge, not a local checkout: there is no checkout any more, and the
   // mirror is where a change is made, so it is what a reader wants to see while making one.
   tree: (repo: string, branch: string, dir: string) =>

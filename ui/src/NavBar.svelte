@@ -28,11 +28,16 @@
     { id: 'pulls', label: 'Pulls', href: `#/pulls/${repo}` },
     { id: 'issues', label: 'Issues', href: `#/issues/${repo}` },
     { id: 'runs', label: 'CI', href: `#/runs/${repo}` },
+    { id: 'releases', label: 'Releases', href: `#/releases/${repo}` },
+    { id: 'workflows', label: 'Workflows', href: `#/workflows/${repo}` },
   ])
 </script>
 
 {#if repo}
   <nav class="nav" aria-label="Repository">
+    <!-- THE ONLY WAY OUT. Every page below names a repository, so without this the reader is in a
+         room with no door — the same problem the panel had before there was a home page. -->
+    <a class="back" href="#/" title="All repositories" aria-label="All repositories">←</a>
     <a class="repo" href={`#/files/${repo}?branch=&dir=`} title={repo}>
       {#if owner}<span class="owner">{owner}/</span>{/if}<span class="name">{name}</span>
     </a>
@@ -65,6 +70,18 @@
     background: var(--background);
     min-height: 40px;
   }
+  .back {
+    flex: 0 0 auto;
+    font-size: var(--text-meta, 12px);
+    color: var(--muted-foreground);
+    text-decoration: none;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    line-height: 1;
+  }
+  .back:hover { background: var(--secondary); color: var(--foreground); }
+  .back:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
   .repo {
     font: inherit;
     font-size: var(--text-meta, 12px);

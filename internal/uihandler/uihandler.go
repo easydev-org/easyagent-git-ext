@@ -34,6 +34,9 @@ type Handler struct {
 	Issues IssueSource
 	// Runs reads CI runs from GitHub. Optional: without it there are no run pages.
 	Runs RunSource
+	// Browse reads the ACCOUNT-level view: which repositories and organisations exist, and a
+	// repository's releases and workflows. Optional: without it the panel has no starting page.
+	Browse BrowseSource
 	// Forge builds a client for one MIRROR repository in the caller's scope. Optional: a deployment
 	// with no mirror configured has no file-browsing pages.
 	//
@@ -99,6 +102,18 @@ func (h *Handler) Register(mux *http.ServeMux, prefix string) {
 		mux.HandleFunc(p+"run", h.run)
 		mux.HandleFunc(p+"run/jobs", h.runJobs)
 		mux.HandleFunc(p+"run/job/log", h.runJobLog)
+	}
+
+	// The layer ABOVE a repository: the pages a reader reaches BEFORE one is chosen.
+	//
+	// Without these the panel had no door — every page needed a repository to name, so opening it
+	// gave an instruction and nothing to click.
+	if h.Browse != nil {
+		mux.HandleFunc(p+"repos", h.repos)
+		mux.HandleFunc(p+"orgs", h.orgs)
+		mux.HandleFunc(p+"whoami", h.whoami)
+		mux.HandleFunc(p+"releases", h.releases)
+		mux.HandleFunc(p+"workflows", h.workflows)
 	}
 
 	// The MIRROR's own pages: browse the repository a change is being made in.

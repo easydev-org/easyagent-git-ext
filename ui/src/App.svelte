@@ -14,6 +14,9 @@
   import RunsPage from './RunsPage.svelte'
   import RunPage from './RunPage.svelte'
   import ItemsPage from './ItemsPage.svelte'
+  import HomePage from './HomePage.svelte'
+  import ReleasesPage from './ReleasesPage.svelte'
+  import WorkflowsPage from './WorkflowsPage.svelte'
   import NavBar from './NavBar.svelte'
   import CodePane from './CodePane.svelte'
   import Tree from './Tree.svelte'
@@ -41,6 +44,10 @@
     | { kind: 'run'; repo: string; id: number }
     // The two LISTS: a tab bar is useless if every tab leads to a page that needs a number.
     | { kind: 'pulls'; repo: string }
+    // The layer ABOVE a repository: the pages a reader reaches before one is chosen.
+    | { kind: 'home' }
+    | { kind: 'releases'; repo: string }
+    | { kind: 'workflows'; repo: string }
     | { kind: 'issues'; repo: string }
     | { kind: 'files'; repo: string; branch: string; dir: string }
 
@@ -73,6 +80,12 @@
     if (parts[0] === 'runs' && parts[1] && parts[2]) {
       return { kind: 'runs', repo: `${parts[1]}/${parts[2]}` }
     }
+    if (parts[0] === 'releases' && parts[1] && parts[2]) {
+      return { kind: 'releases', repo: `${parts[1]}/${parts[2]}` }
+    }
+    if (parts[0] === 'workflows' && parts[1] && parts[2]) {
+      return { kind: 'workflows', repo: `${parts[1]}/${parts[2]}` }
+    }
     if (parts[0] === 'pulls' && parts[1] && parts[2]) {
       return { kind: 'pulls', repo: `${parts[1]}/${parts[2]}` }
     }
@@ -96,7 +109,7 @@
         dir: q.get('dir') ?? '',
       }
     }
-    return { kind: 'root' }
+    return { kind: 'home' }
   }
 
   let route = $state<Route>(parse(location.hash))
@@ -127,6 +140,10 @@
         return { repo: route.repo, active: 'runs' }
       case 'runs':
         return { repo: route.repo, active: 'runs' }
+      case 'releases':
+        return { repo: route.repo, active: 'releases' }
+      case 'workflows':
+        return { repo: route.repo, active: 'workflows' }
       default:
         return { repo: '', active: '' }
     }
@@ -285,6 +302,10 @@
         <RunsPage repo={route.repo} />
       {:else if route.kind === 'run'}
         <RunPage repo={route.repo} id={route.id} />
+      {:else if route.kind === 'releases'}
+        <ReleasesPage repo={route.repo} />
+      {:else if route.kind === 'workflows'}
+        <WorkflowsPage repo={route.repo} />
       {:else if route.kind === 'files'}
         <div class="layout">
           <!-- NARROW: one page at a time, and opening a file replaces the tree. WIDE: the tree is a
@@ -319,13 +340,9 @@
           {/if}
         </div>
       {:else}
-        <div class="state">
-          Nothing selected.
-          <div class="muted t-meta">
-            Open a repository with <span class="mono">#/files/&lt;owner&gt;/&lt;name&gt;</span>, or run a
-            tool — its result opens here.
-          </div>
-        </div>
+        <!-- The root route IS the home page: a reader who opens the panel has to start somewhere,
+             and before this they started on an instruction with nothing to click. -->
+        <HomePage />
       {/if}
     </div>
   </div>
