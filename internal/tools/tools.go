@@ -97,6 +97,23 @@ func RequireMap() map[string][]string {
 func Registry(d Deps) map[string]Handler {
 	t := &toolset{deps: d}
 	raw := map[string]Handler{
+		// THE MIRROR. A local, writable copy of the repository that changes are made in.
+		//
+		// GitHub is the AUTHORITY: what is merged, reviewed and released lives there. The mirror
+		// exists so a change can be made without a clone — a branch is a ref, a file is an object,
+		// and a commit is one call. `git-push-branch` is the only way out of it, and `gh-pr-create`
+		// is the only way in.
+		//
+		// These live in this extension rather than their own because the workflow is one thing:
+		// "change the code and land it". Splitting it meant an agent watching a patch succeed and a
+		// push fail, with two sets of errors and two credentials to explain.
+		"git-sync-upstream": t.syncUpstream,
+		"git-branch-create": t.branchCreate,
+		"git-file-patch":    t.filePatch,
+		"git-file-read":     t.fileRead,
+		"git-file-list":     t.fileList,
+		"git-push-branch":   t.pushBranch,
+
 		// GITHUB PLATFORM. Repository metadata, account, releases, packages.
 		"gh-info":     t.info,
 		"gh-whoami":   t.whoami,

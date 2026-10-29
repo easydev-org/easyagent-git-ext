@@ -24,25 +24,6 @@ func TestViewRouteShapes(t *testing.T) {
 	}
 }
 
-// No workspace id means no view, not a broken link.
-func TestViewForNeedsAWorkspace(t *testing.T) {
-	if v := viewFor("", "/ws//tree/", "x"); v != nil {
-		t.Fatalf("an empty workspace id produced a view: %#v", v)
-	}
-}
-
-func TestViewForCarriesExtAndRoute(t *testing.T) {
-	v := viewFor("w1", "/ws/w1/tree/", "repo")
-	if v == nil {
-		t.Fatal("no view")
-	}
-	if v["ext"] != "github" {
-		t.Errorf("ext = %v, want github (the Service prefix and mount must agree)", v["ext"])
-	}
-	if v["route"] != "/ws/w1/tree/" {
-		t.Errorf("route = %v", v["route"])
-	}
-}
 
 // A card names a RENDERER, not a route. There is nowhere to navigate to and nothing to fetch: the
 // host hands the frame the tool result, and the UI draws it. That is why a template carries no

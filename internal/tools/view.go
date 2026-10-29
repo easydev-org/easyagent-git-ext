@@ -42,28 +42,6 @@ func cardFor(template string) map[string]any {
 	}
 }
 
-/**
- * viewFor builds the `view` entry: where the reader can GO to browse this call's subject.
- *
- * Kept SEPARATE from `cardFor` because the two fail differently. A card always works — it reads the
- * result. A view is a place: the workspace behind it can expire, and that failure belongs to the
- * moment somebody clicks, not to the moment the message was written. Reporting "expired" inside a
- * card would be reporting it at a time when nothing is wrong.
- *
- * Returns nil when there is nothing to point at, so a caller with no workspace emits no button rather
- * than a link to a broken route.
- */
-func viewFor(wsID, route, title string) map[string]any {
-	if wsID == "" {
-		return nil
-	}
-	return map[string]any{
-		"ext":   uiExtID,
-		"route": route,
-		"title": title,
-	}
-}
-
 // pullView points at a pull request's page.
 //
 // The route is `#/pull/<owner>/<name>/<number>` — the repository as TWO segments, matching how the

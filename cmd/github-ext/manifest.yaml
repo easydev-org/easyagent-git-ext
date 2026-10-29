@@ -10,6 +10,63 @@ lifecycle: [deleted]
 # Reading works anonymously on a public repository. Writing needs a token.
 
 config:
+  - name: servers
+    type: list
+    item_type: object
+    kind: secret
+    scope: global
+    description: >-
+      The git hosts to authenticate against. A server is selected by the remote
+      URL's host; `kind` picks the HTTPS basic-auth username (github ->
+      x-access-token, gitlab -> oauth2, gitea -> the real account) AND which
+      platform API the read-only remote tools use. SECRET: never returned to a
+      client.
+    descriptions:
+      zh: >-
+        需要认证的 git 主机列表。按 remote URL 的主机选择；`kind` 既决定 HTTPS
+        basic-auth 用户名（github → x-access-token，gitlab → oauth2，gitea → 真实账号），
+        也决定只读远端工具使用哪个平台 API。机密：永不返回给客户端。
+    fields:
+      - name: host
+        type: string
+        format: host
+        required: true
+        description: Hostname only, no scheme and no path (e.g. github.com).
+        descriptions:
+          zh: 仅主机名，不含协议和路径（如 github.com）。
+      - name: kind
+        type: enum
+        enum_values: [github, gitlab, gitea, generic]
+        default: generic
+        description: >-
+          The forge. It selects the basic-auth username and the platform API used
+          by the read-only remote tools.
+        descriptions:
+          zh: 平台类型。决定 basic-auth 用户名，以及只读远端工具所用平台 API。
+      - name: token
+        type: string
+        kind: secret
+        description: >-
+          Personal access token. Empty = anonymous (public repositories only).
+        descriptions:
+          zh: 个人访问令牌。留空表示匿名（仅可读公开仓库）。
+      - name: user
+        type: string
+        description: >-
+          Overrides the basic-auth username. Gitea (and generic hosts) need the
+          real account name.
+        descriptions:
+          zh: 覆盖 basic-auth 用户名。Gitea（及通用主机）需要真实账号名。
+      - name: api_url
+        type: string
+        format: uri
+        description: >-
+          Optional API base override, e.g. https://git.example.com/api/v1 for a
+          self-hosted forge served from a different origin than the git host.
+        descriptions:
+          zh: >-
+            可选的 API 基础地址覆盖，如自建 forge 的 https://git.example.com/api/v1
+            （API 与 git 主机不同源时使用）。
   - name: token
     type: secret
     description: >-
@@ -91,6 +148,215 @@ permissions:
 
 tools:
   # ── 本地 git（工作区目录，不联网）─────────────────────────────────────────
+  - name: git-branch-create
+    description: >-
+      Make a working branch, from a local branch or from one that exists only on
+      the upstream. A name that ALREADY EXISTS is refused by default: silently
+      handing back the old branch means patching, pushing and updating a pull
+      request the caller believed was new.
+      This is where a change starts — there is no clone and no checkout anywhere.
+    descriptions:
+      zh: >-
+        创建开发分支，可以从本地分支，也可以从**只存在于上游**的分支。同名分支
+        **默认拒绝**：静默返回旧分支意味着调用方以为在改新分支，实际却在旧分支上
+        打补丁、推送，并更新了一个他以为全新的 PR。
+        改动从这里开始——全程没有克隆，也没有工作区。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL, e.g. https://git.example.com/owner/repo.git"
+          descriptions:
+            zh: "仓库地址，如 https://git.example.com/owner/repo.git"
+        branch:
+          type: string
+          description: "Branch to create. Must NOT be a protected branch — those only move by merges on the upstream."
+          descriptions:
+            zh: "要创建的分支名。**不能是受保护分支**——受保护分支只能通过上游的合并前进。"
+        from:
+          type: string
+          description: >-
+            Where to start from (default: main). Either a branch in this mirror
+            ("main"), or one on the upstream even if the mirror has never seen it
+            ("upstream:feat/old") — the latter also needs `upstream`.
+          descriptions:
+            zh: >-
+              起点（默认：main）。可以是本地镜像里的分支（"main"），也可以是**只存在于
+              上游**的分支（"upstream:feat/old"，需同时给 upstream）。
+        upstream:
+          type: string
+          description: "Upstream git URL, needed only when `from` is `upstream:<branch>`."
+          descriptions:
+            zh: "上游地址，仅当 from 为 upstream:<branch> 时需要。"
+        on_exists:
+          type: string
+          description: >-
+            What a name collision means: "fail" (default) refuses and names the
+            commit occupying the name; "reuse" continues on that branch; "reset"
+            deletes and recreates it, discarding what was there.
+          descriptions:
+            zh: >-
+              同名时的处理："fail"（默认）拒绝并报出占用该名字的提交；"reuse" 续用该
+              分支；"reset" 删除后重建，**会丢弃原有内容**。
+      required: [remote, branch]
+    required_config: [servers]
+  - name: git-file-list
+    description: >-
+      List one directory of one branch. An empty dir means the repository root.
+    descriptions:
+      zh: "列出某个分支的某个目录。dir 为空表示仓库根目录。"
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL."
+          descriptions:
+            zh: "仓库地址。"
+        branch:
+          type: string
+          description: "Branch to list."
+          descriptions:
+            zh: "列出哪个分支。"
+        dir:
+          type: string
+          description: "Directory path (default: the root)."
+          descriptions:
+            zh: "目录路径（默认：根目录）。"
+      required: [remote, branch]
+    required_config: [servers]
+  - name: git-file-patch
+    description: >-
+      Edit files with a patch. THE ONLY EDITING TOOL — there is no write, delete
+      or move. Applied whole or not at all, and the whole patch becomes ONE
+      commit, so "this change landed" is a single fact in the history.
+    descriptions:
+      zh: >-
+        用补丁修改文件。**唯一的编辑工具**——没有 write/delete/move。整份生效或整份
+        失败，且整份补丁成为**一个提交**，因此「这次改动生效了」在历史里是一个事实。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL."
+          descriptions:
+            zh: "仓库地址。"
+        branch:
+          type: string
+          description: "Branch to commit on. Must NOT be protected."
+          descriptions:
+            zh: "提交到哪个分支。**不能是受保护分支**。"
+        message:
+          type: string
+          description: "Commit message. Required — a commit nobody can read in a log has to be opened to be understood."
+          descriptions:
+            zh: "提交信息。必填——日志里读不懂的提交只能被点开才知道是什么。"
+        patch:
+          type: string
+          description: "The patch text (*** Begin Patch ... *** End Patch)."
+          descriptions:
+            zh: "补丁文本（*** Begin Patch ... *** End Patch）。"
+      required: [remote, branch, message, patch]
+    required_config: [servers]
+  - name: git-file-read
+    description: >-
+      Read one file from one branch, with line numbers. Read before patching: the
+      hunk header needs the current content.
+    descriptions:
+      zh: >-
+        读取某个分支上的单个文件，带行号。打补丁前先读：hunk 头需要当前内容。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Repository URL."
+          descriptions:
+            zh: "仓库地址。"
+        branch:
+          type: string
+          description: "Branch to read from."
+          descriptions:
+            zh: "从哪个分支读取。"
+        path:
+          type: string
+          description: "File path inside the repository."
+          descriptions:
+            zh: "仓库内的文件路径。"
+      required: [remote, branch, path]
+    required_config: [servers]
+  - name: git-push-branch
+    description: >-
+      Send ONE branch to the upstream, under a name of your choosing. Nothing else
+      leaves the mirror — unlike a push mirror, which sends every ref the moment it
+      is committed, including experiments and misnamed branches.
+      Refused when the destination branch has commits this one does not: overwriting
+      it would lose work that exists nowhere else.
+    descriptions:
+      zh: >-
+        把**一个**分支推到上游，名字可自选。镜像里的其他内容一概不外流——不像 push
+        mirror 那样一提交就推走所有 ref，包括试验品和命名错误的分支。
+        目标分支若有本地没有的提交则拒绝：覆盖会丢掉别处不存在的成果。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Local repository URL (the mirror the branch comes from)."
+          descriptions:
+            zh: "本地仓库地址（分支来源的镜像）。"
+        branch:
+          type: string
+          description: "Branch in the mirror to send."
+          descriptions:
+            zh: "镜像中要推送的分支。"
+        upstream:
+          type: string
+          description: "Destination git URL, e.g. https://github.com/owner/repo.git"
+          descriptions:
+            zh: "目标地址，如 https://github.com/owner/repo.git"
+        to:
+          type: string
+          description: "Name at the destination (default: the same branch name). Keep it fixed so a re-push updates the same pull request."
+          descriptions:
+            zh: "目标分支名（默认：同名）。保持固定可让重复推送更新同一个 PR。"
+      required: [remote, branch, upstream]
+    required_config: [servers]
+  - name: git-sync-upstream
+    description: >-
+      Fast-forward a branch to its same-named branch on the upstream. FOR
+      PROTECTED BRANCHES: call it before cutting a working branch, so the new
+      branch starts from the current upstream rather than a stale mirror.
+      Refuses when the local branch has commits the upstream does not — that
+      state means somebody wrote to a protected branch, and overwriting would
+      lose their work.
+    descriptions:
+      zh: >-
+        把分支快进到上游的同名分支。**用于受保护分支**：在切开发分支之前调用，
+        让新分支从当前的上游起步，而不是过期的镜像。若本地分支有上游没有的提交则拒绝
+        ——那意味着有人直接写了受保护分支，覆盖会丢掉他的工作。
+    input_schema:
+      type: object
+      properties:
+        remote:
+          type: string
+          description: "Local repository URL (the mirror to bring up to date)."
+          descriptions:
+            zh: "本地仓库地址（要更新到最新的镜像）。"
+        branch:
+          type: string
+          description: "Branch to fast-forward, e.g. main."
+          descriptions:
+            zh: "要快进的分支，如 main。"
+        upstream:
+          type: string
+          description: "Upstream git URL to follow, e.g. https://github.com/owner/repo.git"
+          descriptions:
+            zh: "要跟随的上游地址，如 https://github.com/owner/repo.git"
+      required: [remote, branch, upstream]
+    required_config: [servers]
   - name: gh-issue-create
     description: >-
       Open an ISSUE. (A pull request cannot be created here: it starts from a workspace, via
