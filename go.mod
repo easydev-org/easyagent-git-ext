@@ -1,4 +1,4 @@
-module github.com/easydev-org/easyagent-github-ext
+module github.com/easydev-org/easyagent-git-ext
 
 go 1.26.5
 

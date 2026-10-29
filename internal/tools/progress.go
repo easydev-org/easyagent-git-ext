@@ -7,7 +7,7 @@ import (
 
 	easybus "github.com/easydev-org/easybus-sdk"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
 )
 
 // In-flight progress for a tool call.

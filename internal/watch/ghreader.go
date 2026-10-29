@@ -3,7 +3,7 @@ package watch
 import (
 	"context"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
 )
 
 // GHReader adapts the GitHub client to the watcher's ReleaseReader.

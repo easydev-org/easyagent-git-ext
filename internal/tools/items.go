@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
 )
 
 // ONE numbering space, so ONE set of tools.

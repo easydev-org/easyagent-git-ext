@@ -7,7 +7,7 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
 )
 
 // gh-check-log: the LIVE view, and the three things a caller must know before trusting it.
@@ -69,7 +69,7 @@ func (t *toolset) checkLog(ctx context.Context, args map[string]any, session, te
 		fmt.Fprintf(&b, ".\n\n")
 		fmt.Fprintf(&b, "A live log exists only if the workflow publishes one: this tool reads a "+
 			"check run's output.text, which is empty unless the job uses the log-stream action.\n\n")
-		fmt.Fprintf(&b, "  - uses: easydev-org/easyagent-github-ext/actions/log-stream@main\n")
+		fmt.Fprintf(&b, "  - uses: easydev-org/easyagent-git-ext/actions/log-stream@main\n")
 		fmt.Fprintf(&b, "    with:\n")
 		fmt.Fprintf(&b, "      token:  workflow-token-here\n")
 		fmt.Fprintf(&b, "      command: make test\n\n")

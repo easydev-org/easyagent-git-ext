@@ -1,5 +1,5 @@
-// github-ext serves the gh-* tools: work on GitHub repositories and their CI with no local
-// sandbox.
+// git-ext serves the mirror and GitHub: change the code in the mirror, push the branch, then open
+// and land a pull request. There is no local git and no sandbox — the forge's API is the workspace.
 package main
 
 import (
@@ -15,12 +15,12 @@ import (
 	"github.com/easydev-org/easybus-sdk/manifest"
 	"github.com/easydev-org/easybus-sdk/transport/nats"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/tools"
-	"github.com/easydev-org/easyagent-github-ext/internal/uihandler"
+	"github.com/easydev-org/easyagent-git-ext/internal/tools"
+	"github.com/easydev-org/easyagent-git-ext/internal/uihandler"
 	// The PR source reads GitHub for the UI's pull-request pages — the one remote read in the UI's
 	// data path. Everything else the panel used to show came from a local checkout, which this
 	// extension no longer keeps.
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
 )
 
 //go:embed manifest.yaml
@@ -38,7 +38,7 @@ var uiFiles embed.FS
 // the API routes (what the JSON handlers claim), and the host's reverse-proxy rule. When they
 // disagreed, an API path fell through to the SPA and answered with an HTML document; the browser's
 // JSON parse failed and no 404 pointed at the path that was wrong.
-const uiBase = "/ext/github"
+const uiBase = "/ext/git"
 
 // uiMux builds the extension's HTTP surface: the health/version probes plus the UI's data API.
 //
@@ -49,11 +49,11 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"name":"github"}`))
+		_, _ = w.Write([]byte(`{"ok":true,"name":"git"}`))
 	})
 	mux.HandleFunc("/api/v1/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"github","version":"` + ver + `"}`))
+		_, _ = w.Write([]byte(`{"id":"git","version":"` + ver + `"}`))
 	})
 	// Identity resolves a caller's bearer to a tenant by asking the agent, which owns the token
 	// table. Without this the UI API would have to trust `?tenant=`, i.e. let anyone read any
@@ -68,7 +68,7 @@ func uiMux(ver, agentURL string, pulls uihandler.PullSource) http.Handler {
 }
 
 func main() {
-	log := slog.Default().With("svc", "github-ext")
+	log := slog.Default().With("svc", "git-ext")
 
 	natsURL := envOr("NATS_URL", "nats://127.0.0.1:4222")
 	bus, err := nats.Connect(natsURL)
@@ -166,15 +166,15 @@ func main() {
 			Assets:      uiFiles,
 			StripPrefix: "ui",
 			Base:        uiBase,
-			// /ext/github/api/* belongs to the handlers, not the bundle. Without this the SPA
-			// fallback answers it with index.html, and the UI's fetch fails parsing HTML as JSON.
+			// /ext/git/api/* belongs to the handlers, not the bundle. Without this the SPA fallback
+			// answers it with index.html, and the UI's fetch fails parsing HTML as JSON.
 			APIPrefix: "/api",
-			Title:     "GitHub",
+			Title:     "Git",
 			// What the shelf says this is for. Declared HERE rather than in the manifest because it
 			// describes the UI, and a build with no UI should declare none.
 			Descriptions: map[string]string{
-				"en": "Repositories, workspaces, pull requests and CI runs.",
-				"zh": "仓库、工作区、合并请求与 CI 运行。",
+				"en": "Change code in a mirror without a clone, then land it on GitHub: pull requests, reviews and CI.",
+				"zh": "无需克隆，在镜像里改代码，再经 GitHub 落地：合并请求、评审与 CI。",
 			},
 			// Served from this extension's own bundle, so the icon can change without a host release.
 			Icon: "/icon.svg",

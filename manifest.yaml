@@ -1,11 +1,22 @@
-id: github
+id: git
 version: 1.0
 lifecycle: [deleted]
 
-# github-ext: work on GitHub repositories and their CI with NO local sandbox.
+# git-ext: the mirror and GitHub, because "change the code and land it" is one job.
 #
-# The whole extension exists to answer one question: can a tool change a repository without a
-# checkout? The answer is a staging area plus exactly one way out — a pull request.
+# GITHUB IS THE AUTHORITY. What is merged, reviewed and released lives there.
+#
+# THE MIRROR IS THE WORKSPACE. It is a writable copy of the repository, changed through the forge's
+# own API: a branch is a ref, a file is an object, and a commit is one call. Nothing is cloned and
+# nothing is checked out, so there is no directory to keep in sync and none to clean up.
+#
+# THE PATH OUT IS ONE WAY AND IT IS REVIEWED:
+#
+#   git-sync-upstream    make main current (fast-forward only)
+#   git-branch-create    a working branch
+#   git-file-patch       the change — one patch, one commit
+#   git-push-branch      send that branch, and nothing else
+#   gh-pr-create         open the request
 #
 # Reading works anonymously on a public repository. Writing needs a token.
 

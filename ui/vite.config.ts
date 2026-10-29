@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [svelte()],
   base: '/ext/github/',
   build: {
-    // The output is go:embed-ed, so it lands in cmd/github-ext/ui at build time — see the
+    // The output is go:embed-ed, so it lands in cmd/git-ext/ui at build time — see the
     // Containerfile. Keeping it out of the repo means a stale build can never be committed and
     // served in place of the real one.
     outDir: 'dist',

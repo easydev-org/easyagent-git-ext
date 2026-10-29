@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// The extension's own UI id. Matches the Service (`github-ext`), the mount (`/ext/github`) and the
+// The extension's own UI id. Matches the Service (`git-ext`), the mount (`/ext/git`) and the
 // permission namespace; one name, so a mismatch shows up as a 404 rather than as wrong data.
-const uiExtID = "github"
+const uiExtID = "git"
 
 // Card templates, named rather than pathed.
 //

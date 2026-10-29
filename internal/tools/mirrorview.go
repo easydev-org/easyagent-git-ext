@@ -1,16 +1,19 @@
 package tools
 
 import (
-	"net/url"
 	"strings"
 )
 
 /**
- * mirrorView points at the MIRROR panel for one repository.
+ * mirrorView names the MIRROR repository a result was about.
  *
- * The mirror is a separate extension from this one: it owns the branch-and-commit side, and its
- * panel browses files. A view emitted here therefore names THAT extension, not this one — a link
- * to a route this extension does not serve would open on nothing.
+ * IT NO LONGER POINTS AT A PANEL. It used to name a second extension whose page browsed the mirror's
+ * files; the two extensions are now one, and this one has no file-browsing page — its page shows
+ * pull requests. Emitting a route nothing serves would put a button on a card that opens on nothing,
+ * which is worse than no button: the reader spends a click discovering that.
+ *
+ * So the repository is reported as DATA and the caller decides what to do with it. When a mirror page
+ * exists, pointing at it is a one-line change here rather than a change at every call site.
  *
  * WHY THE TOOL AND NOT THE MANIFEST: only the tool knows WHICH repository it just read. A merge
  * request listing can be asked about a remote, a checkout, or the session's own clone, and the
@@ -30,21 +33,15 @@ func mirrorView(owner, repo, tail, title string) map[string]any {
 	if owner == "" || repo == "" {
 		return nil
 	}
-	// The repository is TWO path segments in the panel's hash, not one escaped token: `owner/name` is
-	// how everybody writes it, and escaping the slash would make it an opaque string.
-	route := "/repo/" + url.PathEscape(owner) + "/" + url.PathEscape(repo)
-	if tail != "" {
-		route += "/" + strings.TrimPrefix(tail, "/")
-	}
 	if title == "" {
 		title = owner + "/" + repo
 	}
-	return map[string]any{
-		"ext":   mirrorExtID,
-		"route": route,
+	out := map[string]any{
+		"repo":  owner + "/" + repo,
 		"title": title,
 	}
+	if tail != "" {
+		out["at"] = strings.TrimPrefix(tail, "/")
+	}
+	return out
 }
-
-// mirrorExtID is the extension that serves the mirror panel.
-const mirrorExtID = "gitea"

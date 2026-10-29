@@ -9,9 +9,9 @@ import (
 
 	"github.com/easydev-org/easybus-sdk/extension"
 
-	"github.com/easydev-org/easyagent-github-ext/internal/config"
-	"github.com/easydev-org/easyagent-github-ext/internal/ghclient"
-	"github.com/easydev-org/easyagent-github-ext/internal/watch"
+	"github.com/easydev-org/easyagent-git-ext/internal/config"
+	"github.com/easydev-org/easyagent-git-ext/internal/ghclient"
+	"github.com/easydev-org/easyagent-git-ext/internal/watch"
 )
 
 // startReleaseWatchers publishes a channel event when a watched repository gains a release.
