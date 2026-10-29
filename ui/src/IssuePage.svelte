@@ -140,6 +140,11 @@
     flex-wrap: wrap;
     min-width: 0;
   }
+  /* The title needs more room from the number than the badges do: it is a different kind of thing,
+     and sitting flush against "#20" makes the number read as part of it. */
+  .title-row .title {
+    margin-left: var(--sp-xs, 4px);
+  }
   .num {
     color: var(--muted-foreground);
     flex: 0 0 auto;
@@ -156,20 +161,30 @@
     font-size: var(--text-micro, 10px);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    /* A pill, not bare letters: an unadorned word in colour reads as a typo, and a shape reads as a
-       status at a glance. */
-    padding: 1px 8px;
+    /* A FILLED pill, not an outline. An outlined badge next to a bold title loses the contest for
+       attention, and a status that has to be looked for is not doing its job. The tint is soft
+       because a saturated one would shout on every row of a list. */
+    padding: 2px 9px;
     border-radius: 999px;
-    border: 1px solid currentColor;
+    border: 1px solid transparent;
     line-height: 1.6;
+    font-weight: 600;
   }
-  .badge.open { color: var(--success, #1a7f37); }
-  .badge.closed { color: var(--destructive, #cf222e); }
+  .badge.open {
+    color: var(--success, #1a7f37);
+    background: color-mix(in srgb, var(--success, #1a7f37) 14%, transparent);
+  }
+  .badge.closed {
+    color: var(--destructive, #cf222e);
+    background: color-mix(in srgb, var(--destructive, #cf222e) 14%, transparent);
+  }
   .badge.link {
     text-transform: none;
     color: var(--primary);
     text-decoration: none;
     border-color: var(--border);
+    background: none;
+    font-weight: inherit;
   }
   .badge.link:hover { text-decoration: underline; }
   .meta {
@@ -226,18 +241,21 @@
   .comment {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: var(--sp-sm);
+    padding: var(--sp-sm) var(--sp-md) var(--sp-sm) var(--sp-sm);
     background: var(--card);
     /* Room for the avatar column, so the text of every comment starts at the same x. */
     display: grid;
     grid-template-columns: 28px 1fr;
-    column-gap: var(--sp-sm);
+    column-gap: var(--sp-md);
+    /* Grid rows so the avatar, the head and the body share one left edge at column 2 — without this
+       the body drifts right of the name it belongs to. */
+    align-items: start;
   }
   .comment-head {
     display: flex;
-    gap: var(--sp-sm);
+    gap: var(--sp-xs, 6px);
     align-items: baseline;
-    margin-bottom: 4px;
+    margin-bottom: var(--sp-xs, 6px);
     grid-column: 2;
   }
   /* A placeholder mark, not a picture: fetching every commenter's avatar costs a request per
@@ -248,12 +266,13 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: var(--secondary);
-    color: var(--muted-foreground);
+    /* A touch darker than the card it sits on, so the circle is a shape rather than a smudge. */
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+    color: var(--foreground);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--text-micro, 10px);
+    font-size: var(--text-meta, 12px);
     font-weight: 600;
     text-transform: uppercase;
     user-select: none;
@@ -261,6 +280,9 @@
   .comment-body { grid-column: 2; min-width: 0; }
   .who { font-weight: 600; font-size: var(--text-meta, 12px); }
   .md { overflow-wrap: anywhere; }
+  /* The issue's own description sits under the header, so it gets a little more room above it than a
+     comment gets inside its card. */
+  .body-scroll > .md { margin-top: var(--sp-xs, 6px); }
   .md :global(p) { margin: 0 0 var(--sp-sm); }
   .md :global(p:last-child) { margin-bottom: 0; }
   .md :global(pre) {
